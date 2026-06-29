@@ -1,0 +1,368 @@
+import { Router } from "express";
+import { eq, desc, and, getDb, schema } from "@agntpymt/db";
+import { z } from "zod";
+import { env } from "../config.js";
+import { checkHermesHealth } from "../services/hermes.js";
+import { createRun } from "../services/run-orchestrator.js";
+import { runEventBus } from "../services/event-bus.js";
+import { approveAndSettle, denyApproval } from "../simulation/purchase-flow.js";
+import {
+  ensureAllAgentWallets,
+  getWalletsOverview,
+  provisionAgentWallet,
+  setTreasuryWallet,
+} from "../services/agent-wallet.js";
+
+export const apiRouter = Router();
+
+apiRouter.get("/health", async (_req, res) => {
+  const hermes = await checkHermesHealth();
+  res.json({
+    status: "ok",
+    daemon: hermes.online ? "running" : "degraded",
+    hermes,
+    simulatePayments: env.simulatePayments,
+    demoTransactionFeeUsd: env.demoTransactionFeeUsd,
+    aiNegotiation: Boolean(env.openaiApiKey),
+    paymentMode: env.simulatePayments ? "simulated" : "x402",
+    facilitatorUrl: env.facilitatorUrl,
+    network: "Base Sepolia",
+  });
+});
+
+/** x402-protected vendor settlement — payment handled by x402 middleware before this runs. */
+apiRouter.post("/x402/vendor/settle/:sessionId", async (req, res) => {
+  res.json({
+    ok: true,
+    protocol: "x402",
+    sessionId: req.params.sessionId,
+  });
+});
+
+apiRouter.get("/wallets", async (_req, res) => {
+  const data = await getWalletsOverview();
+  res.json(data);
+});
+
+const treasurySchema = z.object({
+  address: z.string().nullable(),
+});
+
+apiRouter.patch("/treasury", async (req, res) => {
+  const parsed = treasurySchema.safeParse(req.body);
+  if (!parsed.success) return res.status(400).json(parsed.error.flatten());
+  await setTreasuryWallet(parsed.data.address);
+  const data = await getWalletsOverview();
+  res.json(data);
+});
+
+apiRouter.get("/dashboard", async (_req, res) => {
+  await ensureAllAgentWallets();
+  const db = getDb();
+  const agents = await db.select().from(schema.agents).where(eq(schema.agents.orgId, env.orgId));
+  const approvals = await db
+    .select()
+    .from(schema.approvals)
+    .where(and(eq(schema.approvals.orgId, env.orgId), eq(schema.approvals.status, "pending_approval")));
+  const transactions = await db
+    .select()
+    .from(schema.transactions)
+    .where(eq(schema.transactions.orgId, env.orgId))
+    .orderBy(desc(schema.transactions.createdAt))
+    .limit(5);
+
+  const totalBalance = agents.reduce((sum, a) => sum + a.balanceUsd, 0);
+  const activeAgents = agents.filter((a) => a.status === "active").length;
+  const spend30Days = transactions.reduce((sum, t) => sum + t.amountUsd, 0);
+
+  res.json({
+    kpis: {
+      totalBalanceUsd: totalBalance,
+      activeAgents: `${activeAgents} of ${agents.length}`,
+      pendingApprovals: approvals.length,
+      spend30DaysUsd: spend30Days,
+    },
+    agents: agents.map(stripAgentSecrets),
+    pendingApprovals: approvals,
+    recentTransactions: transactions,
+    activeWallets: agents.filter((a) => a.walletProvisioned && a.walletAddress).length,
+  });
+});
+
+function stripAgentSecrets<T extends { walletPrivateKey?: string | null }>(agent: T) {
+  const { walletPrivateKey: _key, ...safe } = agent;
+  return safe;
+}
+
+apiRouter.get("/policies", async (_req, res) => {
+  const db = getDb();
+  const rows = await db.select().from(schema.agentPolicies);
+  res.json(rows);
+});
+
+const patchPolicySchema = z.object({
+  autoApproveLimitUsd: z.number().positive().optional(),
+  negotiationRules: z.string().nullable().optional(),
+});
+
+apiRouter.patch("/agents/:id/policy", async (req, res) => {
+  const parsed = patchPolicySchema.safeParse(req.body);
+  if (!parsed.success) return res.status(400).json(parsed.error.flatten());
+
+  const db = getDb();
+  const [agent] = await db.select().from(schema.agents).where(eq(schema.agents.id, req.params.id));
+  if (!agent) return res.status(404).json({ error: "Not found" });
+
+  const updates: Record<string, number | string | null> = {};
+  if (parsed.data.autoApproveLimitUsd != null) {
+    updates.autoApproveLimitUsd = parsed.data.autoApproveLimitUsd;
+  }
+  if (parsed.data.negotiationRules !== undefined) {
+    updates.negotiationRules = parsed.data.negotiationRules;
+  }
+
+  await db
+    .update(schema.agentPolicies)
+    .set(updates)
+    .where(eq(schema.agentPolicies.agentId, req.params.id));
+
+  const [policy] = await db
+    .select()
+    .from(schema.agentPolicies)
+    .where(eq(schema.agentPolicies.agentId, req.params.id));
+  res.json(policy);
+});
+
+apiRouter.get("/agents", async (_req, res) => {
+  await ensureAllAgentWallets();
+  const db = getDb();
+  const agents = await db.select().from(schema.agents).where(eq(schema.agents.orgId, env.orgId));
+  res.json(agents.map(stripAgentSecrets));
+});
+
+apiRouter.get("/agents/:id", async (req, res) => {
+  const db = getDb();
+  const [agent] = await db.select().from(schema.agents).where(eq(schema.agents.id, req.params.id));
+  if (!agent) return res.status(404).json({ error: "Not found" });
+  const [policy] = await db
+    .select()
+    .from(schema.agentPolicies)
+    .where(eq(schema.agentPolicies.agentId, agent.id));
+  res.json({ ...stripAgentSecrets(agent), policy });
+});
+
+const createAgentSchema = z.object({
+  name: z.string().min(1),
+  category: z.string().min(1),
+  description: z.string().optional(),
+});
+
+apiRouter.post("/agents", async (req, res) => {
+  const parsed = createAgentSchema.safeParse(req.body);
+  if (!parsed.success) return res.status(400).json(parsed.error.flatten());
+
+  const db = getDb();
+  const id = `agent_${Date.now()}`;
+  const row = {
+    id,
+    orgId: env.orgId,
+    name: parsed.data.name,
+    category: parsed.data.category,
+    description: parsed.data.description ?? null,
+    status: "active",
+    iconColor: "violet",
+    walletAddress: null,
+    balanceUsd: 0,
+    createdAt: new Date().toISOString(),
+  };
+
+  await db.insert(schema.agents).values(row);
+  await db.insert(schema.agentPolicies).values({ agentId: id, autoApproveLimitUsd: 0.05 });
+  await provisionAgentWallet(id);
+  const [created] = await db.select().from(schema.agents).where(eq(schema.agents.id, id));
+  res.status(201).json(created ? stripAgentSecrets(created) : row);
+});
+
+const patchAgentSchema = z.object({
+  name: z.string().min(1).optional(),
+  description: z.string().optional(),
+});
+
+apiRouter.patch("/agents/:id", async (req, res) => {
+  const parsed = patchAgentSchema.safeParse(req.body);
+  if (!parsed.success) return res.status(400).json(parsed.error.flatten());
+
+  const db = getDb();
+  const [agent] = await db.select().from(schema.agents).where(eq(schema.agents.id, req.params.id));
+  if (!agent) return res.status(404).json({ error: "Not found" });
+
+  const updates: Record<string, string | null> = {};
+  if (parsed.data.name) updates.name = parsed.data.name;
+  if (parsed.data.description !== undefined) updates.description = parsed.data.description;
+
+  await db.update(schema.agents).set(updates).where(eq(schema.agents.id, req.params.id));
+  const [updated] = await db.select().from(schema.agents).where(eq(schema.agents.id, req.params.id));
+  res.json(updated ? stripAgentSecrets(updated) : null);
+});
+
+apiRouter.get("/vendors", async (_req, res) => {
+  const db = getDb();
+  const vendors = await db.select().from(schema.vendors);
+  res.json(vendors);
+});
+
+apiRouter.get("/approvals", async (_req, res) => {
+  const db = getDb();
+  const rows = await db
+    .select()
+    .from(schema.approvals)
+    .where(eq(schema.approvals.orgId, env.orgId))
+    .orderBy(desc(schema.approvals.requestedAt));
+  res.json(rows);
+});
+
+apiRouter.post("/approvals/:id/approve", async (req, res) => {
+  try {
+    const result = await approveAndSettle(req.params.id);
+    res.json(result);
+  } catch (err) {
+    res.status(400).json({ error: err instanceof Error ? err.message : "Failed" });
+  }
+});
+
+apiRouter.post("/approvals/:id/deny", async (req, res) => {
+  await denyApproval(req.params.id);
+  res.json({ ok: true });
+});
+
+apiRouter.get("/transactions", async (_req, res) => {
+  const db = getDb();
+  const rows = await db
+    .select()
+    .from(schema.transactions)
+    .where(eq(schema.transactions.orgId, env.orgId))
+    .orderBy(desc(schema.transactions.createdAt));
+  res.json(rows);
+});
+
+apiRouter.get("/logs", async (req, res) => {
+  const db = getDb();
+  const runId = req.query.runId as string | undefined;
+  const agentId = req.query.agentId as string | undefined;
+
+  let rows;
+  if (runId) {
+    rows = await db
+      .select()
+      .from(schema.auditLogs)
+      .where(eq(schema.auditLogs.runId, runId))
+      .orderBy(schema.auditLogs.createdAt);
+  } else if (agentId) {
+    rows = await db
+      .select()
+      .from(schema.auditLogs)
+      .where(eq(schema.auditLogs.agentId, agentId))
+      .orderBy(desc(schema.auditLogs.createdAt))
+      .limit(100);
+  } else {
+    rows = await db.select().from(schema.auditLogs).orderBy(desc(schema.auditLogs.createdAt)).limit(100);
+  }
+
+  res.json(rows);
+});
+
+const runSchema = z.object({
+  agentId: z.string(),
+  prompt: z.string().min(1),
+});
+
+apiRouter.post("/agent/run", async (req, res) => {
+  const parsed = runSchema.safeParse(req.body);
+  if (!parsed.success) return res.status(400).json(parsed.error.flatten());
+
+  const runId = await createRun(parsed.data.agentId, parsed.data.prompt);
+  res.status(202).json({ runId });
+});
+
+apiRouter.get("/agent/run/:runId/events", (req, res) => {
+  const { runId } = req.params;
+
+  res.setHeader("Content-Type", "text/event-stream");
+  res.setHeader("Cache-Control", "no-cache");
+  res.setHeader("Connection", "keep-alive");
+  res.flushHeaders();
+
+  const send = (data: unknown) => {
+    res.write(`data: ${JSON.stringify(data)}\n\n`);
+  };
+
+  void getDb()
+    .select()
+    .from(schema.auditLogs)
+    .where(eq(schema.auditLogs.runId, runId))
+    .orderBy(schema.auditLogs.createdAt)
+    .then((existing) => {
+      for (const log of existing) {
+        send({
+          runId: log.runId,
+          step: log.step,
+          message: log.message,
+          actor: log.actor,
+          payload: log.payload ? JSON.parse(log.payload) : undefined,
+          createdAt: log.createdAt,
+        });
+      }
+    });
+
+  const unsubscribe = runEventBus.subscribe(runId, send);
+  req.on("close", () => unsubscribe());
+});
+
+const purchaseSchema = z.object({
+  agentId: z.string(),
+  purchaseIntent: z.string(),
+  runId: z.string().optional(),
+  category: z.string().optional(),
+  resourceId: z.string().optional(),
+  maxBudget: z.number().optional(),
+});
+
+apiRouter.post("/agent/execute", async (req, res) => {
+  const parsed = purchaseSchema.safeParse(req.body);
+  if (!parsed.success) return res.status(400).json(parsed.error.flatten());
+
+  const { runPurchaseFlow } = await import("../simulation/purchase-flow.js");
+  const runId = parsed.data.runId ?? `mcp_${Date.now()}`;
+  const result = await runPurchaseFlow({
+    runId,
+    agentId: parsed.data.agentId,
+    purchaseIntent: parsed.data.purchaseIntent,
+    category: parsed.data.category,
+    resourceId: parsed.data.resourceId,
+    maxBudget: parsed.data.maxBudget,
+    source: "mcp",
+  });
+
+  res.json(result);
+});
+
+apiRouter.post("/agents/:id/topup", async (req, res) => {
+  const amount = Number(req.body.amount ?? 0);
+  if (amount <= 0) return res.status(400).json({ error: "Invalid amount" });
+
+  const db = getDb();
+  const [agent] = await db.select().from(schema.agents).where(eq(schema.agents.id, req.params.id));
+  if (!agent) return res.status(404).json({ error: "Not found" });
+
+  const { fetchWalletBalances } = await import("../chain/wallet.js");
+  const onChain = agent.walletAddress
+    ? await fetchWalletBalances(agent.walletAddress)
+    : { eth: 0, usdc: 0 };
+
+  await db
+    .update(schema.agents)
+    .set({ balanceUsd: onChain.usdc })
+    .where(eq(schema.agents.id, req.params.id));
+
+  res.json({ ok: true, onChainUsdc: onChain.usdc });
+});

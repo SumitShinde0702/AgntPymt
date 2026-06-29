@@ -1,0 +1,11 @@
+{
+  "mcpServers": {
+    "agntpymt": {
+      "command": "npm",
+      "args": ["run", "mcp", "-w", "server"],
+      "env": {
+        "AGNTPYMT_API_URL": "http://localhost:3001"
+      }
+    }
+  }
+}
