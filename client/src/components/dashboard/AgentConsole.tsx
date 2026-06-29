@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState } from "react";
 import { Link } from "react-router-dom";
 import { Play } from "lucide-react";
-import { api, type Agent, type RunEvent } from "../../lib/api";
+import { api, apiUrl, type Agent, type RunEvent } from "../../lib/api";
 import { RunChatFeed } from "./RunChatFeed";
 
 const EXAMPLES = [
@@ -21,6 +21,7 @@ export function AgentConsole({ agents, onRunComplete }: Props) {
   const [prompt, setPrompt] = useState("");
   const [running, setRunning] = useState(false);
   const [events, setEvents] = useState<RunEvent[]>([]);
+  const [runError, setRunError] = useState<string | null>(null);
   const feedRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
@@ -35,6 +36,7 @@ export function AgentConsole({ agents, onRunComplete }: Props) {
     if (!agentId || !prompt.trim()) return;
     setRunning(true);
     setEvents([]);
+    setRunError(null);
 
     try {
       const { runId } = await api<{ runId: string }>("/api/agent/run", {
@@ -42,8 +44,25 @@ export function AgentConsole({ agents, onRunComplete }: Props) {
         body: JSON.stringify({ agentId, prompt }),
       });
 
-      const es = new EventSource(`/api/agent/run/${runId}/events`);
+      const es = new EventSource(apiUrl(`/api/agent/run/${runId}/events`));
+      const timeout = window.setTimeout(() => {
+        es.close();
+        setRunning(false);
+        setRunError("Run timed out — check server logs and SIMULATE_PAYMENTS setting.");
+        onRunComplete?.();
+      }, 90_000);
+
+      const finish = () => {
+        window.clearTimeout(timeout);
+        es.close();
+        setRunning(false);
+        onRunComplete?.();
+      };
+
+      let received = false;
+
       es.onmessage = (msg) => {
+        received = true;
         const event = JSON.parse(msg.data) as RunEvent;
         setEvents((prev) => {
           if (prev.some((e) => e.createdAt === event.createdAt && e.step === event.step)) return prev;
@@ -55,18 +74,18 @@ export function AgentConsole({ agents, onRunComplete }: Props) {
           event.step === "run_failed" ||
           event.step === "payment_failed"
         ) {
-          es.close();
-          setRunning(false);
-          onRunComplete?.();
+          finish();
         }
       };
       es.onerror = () => {
-        es.close();
-        setRunning(false);
-        onRunComplete?.();
+        finish();
+        if (!received) {
+          setRunError("Lost connection to run stream — retry or check the API server is running.");
+        }
       };
-    } catch {
+    } catch (err) {
       setRunning(false);
+      setRunError(err instanceof Error ? err.message : "Failed to start run");
     }
   }
 
@@ -151,6 +170,10 @@ export function AgentConsole({ agents, onRunComplete }: Props) {
         </span>
         {running && <span className="animate-pulse text-brand-600">Live</span>}
       </div>
+
+      {runError && (
+        <div className="border-b border-red-200 bg-red-50 px-5 py-2 text-sm text-red-700">{runError}</div>
+      )}
 
       <div ref={feedRef} className="h-80 overflow-y-auto bg-gradient-to-b from-slate-50 to-white px-3">
         <RunChatFeed events={events} agentName={agent?.name} />

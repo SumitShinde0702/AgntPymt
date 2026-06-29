@@ -12,6 +12,7 @@ import {
   provisionAgentWallet,
   setTreasuryWallet,
 } from "../services/agent-wallet.js";
+import { suggestAgentProfile } from "../services/agent-profile-ai.js";
 
 export const apiRouter = Router();
 
@@ -151,10 +152,31 @@ apiRouter.get("/agents/:id", async (req, res) => {
   res.json({ ...stripAgentSecrets(agent), policy });
 });
 
+const iconColorSchema = z.enum(["violet", "blue", "green", "orange"]);
+
+const suggestAgentSchema = z.object({
+  prompt: z.string().min(1),
+});
+
+apiRouter.post("/agents/suggest", async (req, res) => {
+  const parsed = suggestAgentSchema.safeParse(req.body);
+  if (!parsed.success) return res.status(400).json(parsed.error.flatten());
+
+  try {
+    const suggestion = await suggestAgentProfile(parsed.data.prompt);
+    res.json({ ...suggestion, aiEnabled: Boolean(env.openaiApiKey) });
+  } catch (err) {
+    res.status(400).json({ error: err instanceof Error ? err.message : "Failed" });
+  }
+});
+
 const createAgentSchema = z.object({
   name: z.string().min(1),
   category: z.string().min(1),
   description: z.string().optional(),
+  iconColor: iconColorSchema.optional(),
+  negotiationRules: z.string().optional(),
+  autoApproveLimitUsd: z.number().positive().optional(),
 });
 
 apiRouter.post("/agents", async (req, res) => {
@@ -170,14 +192,18 @@ apiRouter.post("/agents", async (req, res) => {
     category: parsed.data.category,
     description: parsed.data.description ?? null,
     status: "active",
-    iconColor: "violet",
+    iconColor: parsed.data.iconColor ?? "violet",
     walletAddress: null,
     balanceUsd: 0,
     createdAt: new Date().toISOString(),
   };
 
   await db.insert(schema.agents).values(row);
-  await db.insert(schema.agentPolicies).values({ agentId: id, autoApproveLimitUsd: 0.05 });
+  await db.insert(schema.agentPolicies).values({
+    agentId: id,
+    autoApproveLimitUsd: parsed.data.autoApproveLimitUsd ?? 0.05,
+    negotiationRules: parsed.data.negotiationRules?.trim() || null,
+  });
   await provisionAgentWallet(id);
   const [created] = await db.select().from(schema.agents).where(eq(schema.agents.id, id));
   res.status(201).json(created ? stripAgentSecrets(created) : row);
@@ -290,11 +316,18 @@ apiRouter.get("/agent/run/:runId/events", (req, res) => {
   res.setHeader("Content-Type", "text/event-stream");
   res.setHeader("Cache-Control", "no-cache");
   res.setHeader("Connection", "keep-alive");
+  res.setHeader("X-Accel-Buffering", "no");
   res.flushHeaders();
 
   const send = (data: unknown) => {
     res.write(`data: ${JSON.stringify(data)}\n\n`);
   };
+
+  const unsubscribe = runEventBus.subscribe(runId, send);
+
+  const heartbeat = setInterval(() => {
+    res.write(": ping\n\n");
+  }, 15_000);
 
   void getDb()
     .select()
@@ -314,8 +347,10 @@ apiRouter.get("/agent/run/:runId/events", (req, res) => {
       }
     });
 
-  const unsubscribe = runEventBus.subscribe(runId, send);
-  req.on("close", () => unsubscribe());
+  req.on("close", () => {
+    clearInterval(heartbeat);
+    unsubscribe();
+  });
 });
 
 const purchaseSchema = z.object({

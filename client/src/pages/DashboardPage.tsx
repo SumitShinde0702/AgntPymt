@@ -54,7 +54,7 @@ export function DashboardPage() {
       <AgentConsole agents={data.agents} onRunComplete={load} />
 
       <div className="grid gap-6 xl:grid-cols-2">
-        <AgentsTable agents={data.agents} />
+        <AgentsTable agents={data.agents} onUpdate={load} />
         <PendingApprovals approvals={data.pendingApprovals} agents={data.agents} onUpdate={load} />
       </div>
 

@@ -1,7 +1,8 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { Link } from "react-router-dom";
-import { Bot, CheckCircle, Clock, Copy, ExternalLink, Wallet } from "lucide-react";
+import { Bot, CheckCircle, Clock, Copy, ExternalLink, Plus, Wallet } from "lucide-react";
 import { NegotiationRulesEditor } from "../components/agents/NegotiationRulesEditor";
+import { NewAgentModal } from "../components/agents/NewAgentModal";
 import { api, type AgentPolicy, type AgentWalletRow, type Transaction, type WalletsOverview } from "../lib/api";
 import { addressExplorerUrl, txExplorerUrl } from "../lib/explorer";
 
@@ -158,6 +159,7 @@ export function AgentsPage() {
   const [wallets, setWallets] = useState<WalletsOverview | null>(null);
   const [transactions, setTransactions] = useState<Transaction[]>([]);
   const [policies, setPolicies] = useState<AgentPolicy[]>([]);
+  const [showNewAgent, setShowNewAgent] = useState(false);
 
   const load = useCallback(() => {
     void Promise.all([
@@ -206,14 +208,26 @@ export function AgentsPage() {
             Each agent has an operational wallet on {wallets.network}. Balances refresh from chain every 30s.
           </p>
         </div>
-        <Link
-          to="/wallets"
-          className="inline-flex items-center gap-2 rounded-lg border border-slate-300 px-4 py-2 text-sm font-medium hover:bg-slate-50"
-        >
-          <Wallet className="h-4 w-4" />
-          Fund wallets
-        </Link>
+        <div className="flex items-center gap-2">
+          <button
+            type="button"
+            onClick={() => setShowNewAgent(true)}
+            className="inline-flex items-center gap-2 rounded-lg bg-brand-600 px-4 py-2 text-sm font-medium text-white hover:bg-brand-700"
+          >
+            <Plus className="h-4 w-4" />
+            New Agent
+          </button>
+          <Link
+            to="/wallets"
+            className="inline-flex items-center gap-2 rounded-lg border border-slate-300 px-4 py-2 text-sm font-medium hover:bg-slate-50"
+          >
+            <Wallet className="h-4 w-4" />
+            Fund wallets
+          </Link>
+        </div>
       </div>
+
+      <NewAgentModal open={showNewAgent} onClose={() => setShowNewAgent(false)} onCreated={load} />
 
       <div className="grid gap-4 lg:grid-cols-2">
         {wallets.agents.map((a) => (

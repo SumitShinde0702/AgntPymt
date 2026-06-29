@@ -1,7 +1,11 @@
-const base = import.meta.env.VITE_API_URL ?? "";
+export const apiBase = import.meta.env.VITE_API_URL ?? "";
+
+export function apiUrl(path: string): string {
+  return new URL(path, apiBase || window.location.origin).toString();
+}
 
 export async function api<T>(path: string, init?: RequestInit): Promise<T> {
-  const res = await fetch(`${base}${path}`, {
+  const res = await fetch(apiUrl(path), {
     ...init,
     headers: {
       "Content-Type": "application/json",

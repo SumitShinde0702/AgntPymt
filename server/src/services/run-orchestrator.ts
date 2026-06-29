@@ -155,7 +155,20 @@ export async function createRun(agentId: string, prompt: string) {
     completedAt: null,
   });
 
-  void executeRun(runId, agentId, prompt);
+  void executeRun(runId, agentId, prompt).catch(async (err) => {
+    const message = err instanceof Error ? err.message : "Run failed unexpectedly";
+    await logAudit({
+      runId,
+      agentId,
+      step: "run_failed",
+      message: `Run stopped — ${message}`,
+      actor: "AgntPymt",
+    });
+    await db
+      .update(schema.runs)
+      .set({ status: "failed", completedAt: new Date().toISOString() })
+      .where(eq(schema.runs.id, runId));
+  });
   return runId;
 }
 

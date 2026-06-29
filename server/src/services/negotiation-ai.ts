@@ -97,6 +97,7 @@ export async function generateNegotiationMessage(ctx: NegotiationContext): Promi
         Authorization: `Bearer ${env.openaiApiKey}`,
         "Content-Type": "application/json",
       },
+      signal: AbortSignal.timeout(15_000),
       body: JSON.stringify({
         model: env.openaiModel,
         temperature: 0.65,
