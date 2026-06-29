@@ -13,6 +13,7 @@ import {
 } from "lucide-react";
 import { useEffect, useState } from "react";
 import { api, type HealthData, type DashboardData } from "../../lib/api";
+import { AuthControls } from "../auth/AuthControls";
 
 const nav = [
   { to: "/dashboard", label: "Dashboard", icon: LayoutDashboard },
@@ -134,12 +135,7 @@ export function AppLayout() {
             <button type="button" className="rounded-lg p-2 text-slate-500 hover:bg-slate-100">
               <Sun className="h-5 w-5" />
             </button>
-            <div className="flex items-center gap-2 rounded-full border border-slate-200 px-3 py-1.5">
-              <div className="flex h-8 w-8 items-center justify-center rounded-full bg-brand-600 text-sm font-semibold text-white">
-                A
-              </div>
-              <span className="text-sm font-medium">Admin</span>
-            </div>
+            <AuthControls variant="light" />
           </div>
         </header>
 

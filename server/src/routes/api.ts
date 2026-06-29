@@ -1,5 +1,5 @@
 import { Router } from "express";
-import { eq, desc, and, getDb, schema } from "@agntpymt/db";
+import { eq, desc, and, getDb, schema, inArray, type AuditLog } from "@agntpymt/db";
 import { z } from "zod";
 import { env } from "../config.js";
 import { checkHermesHealth } from "../services/hermes.js";
@@ -13,8 +13,32 @@ import {
   setTreasuryWallet,
 } from "../services/agent-wallet.js";
 import { suggestAgentProfile } from "../services/agent-profile-ai.js";
+import { authEnabled, getOrgId } from "../middleware/auth.js";
+import { getOrCreateTenant } from "../services/tenant.js";
+import { getAuth } from "@clerk/express";
 
 export const apiRouter = Router();
+
+apiRouter.get("/me", async (req, res) => {
+  const orgId = getOrgId(req);
+  if (!authEnabled) {
+    return res.json({
+      authEnabled: false,
+      orgId,
+      orgName: "Demo Organization",
+      userId: null,
+    });
+  }
+  const { userId } = getAuth(req);
+  if (!userId) return res.status(401).json({ error: "Unauthorized" });
+  const tenant = await getOrCreateTenant(userId);
+  res.json({
+    authEnabled: true,
+    orgId: tenant.orgId,
+    orgName: tenant.orgName,
+    userId,
+  });
+});
 
 apiRouter.get("/health", async (_req, res) => {
   const hermes = await checkHermesHealth();
@@ -40,8 +64,8 @@ apiRouter.post("/x402/vendor/settle/:sessionId", async (req, res) => {
   });
 });
 
-apiRouter.get("/wallets", async (_req, res) => {
-  const data = await getWalletsOverview();
+apiRouter.get("/wallets", async (req, res) => {
+  const data = await getWalletsOverview(getOrgId(req));
   res.json(data);
 });
 
@@ -52,23 +76,24 @@ const treasurySchema = z.object({
 apiRouter.patch("/treasury", async (req, res) => {
   const parsed = treasurySchema.safeParse(req.body);
   if (!parsed.success) return res.status(400).json(parsed.error.flatten());
-  await setTreasuryWallet(parsed.data.address);
-  const data = await getWalletsOverview();
+  await setTreasuryWallet(parsed.data.address, getOrgId(req));
+  const data = await getWalletsOverview(getOrgId(req));
   res.json(data);
 });
 
-apiRouter.get("/dashboard", async (_req, res) => {
-  await ensureAllAgentWallets();
+apiRouter.get("/dashboard", async (req, res) => {
+  const orgId = getOrgId(req);
+  await ensureAllAgentWallets(orgId);
   const db = getDb();
-  const agents = await db.select().from(schema.agents).where(eq(schema.agents.orgId, env.orgId));
+  const agents = await db.select().from(schema.agents).where(eq(schema.agents.orgId, orgId));
   const approvals = await db
     .select()
     .from(schema.approvals)
-    .where(and(eq(schema.approvals.orgId, env.orgId), eq(schema.approvals.status, "pending_approval")));
+    .where(and(eq(schema.approvals.orgId, orgId), eq(schema.approvals.status, "pending_approval")));
   const transactions = await db
     .select()
     .from(schema.transactions)
-    .where(eq(schema.transactions.orgId, env.orgId))
+    .where(eq(schema.transactions.orgId, orgId))
     .orderBy(desc(schema.transactions.createdAt))
     .limit(5);
 
@@ -95,6 +120,15 @@ function stripAgentSecrets<T extends { walletPrivateKey?: string | null }>(agent
   return safe;
 }
 
+async function agentIdsForOrg(orgId: string): Promise<string[]> {
+  const db = getDb();
+  const rows = await db
+    .select({ id: schema.agents.id })
+    .from(schema.agents)
+    .where(eq(schema.agents.orgId, orgId));
+  return rows.map((r) => r.id);
+}
+
 apiRouter.get("/policies", async (_req, res) => {
   const db = getDb();
   const rows = await db.select().from(schema.agentPolicies);
@@ -111,8 +145,9 @@ apiRouter.patch("/agents/:id/policy", async (req, res) => {
   if (!parsed.success) return res.status(400).json(parsed.error.flatten());
 
   const db = getDb();
+  const orgId = getOrgId(req);
   const [agent] = await db.select().from(schema.agents).where(eq(schema.agents.id, req.params.id));
-  if (!agent) return res.status(404).json({ error: "Not found" });
+  if (!agent || agent.orgId !== orgId) return res.status(404).json({ error: "Not found" });
 
   const updates: Record<string, number | string | null> = {};
   if (parsed.data.autoApproveLimitUsd != null) {
@@ -134,17 +169,19 @@ apiRouter.patch("/agents/:id/policy", async (req, res) => {
   res.json(policy);
 });
 
-apiRouter.get("/agents", async (_req, res) => {
-  await ensureAllAgentWallets();
+apiRouter.get("/agents", async (req, res) => {
+  const orgId = getOrgId(req);
+  await ensureAllAgentWallets(orgId);
   const db = getDb();
-  const agents = await db.select().from(schema.agents).where(eq(schema.agents.orgId, env.orgId));
+  const agents = await db.select().from(schema.agents).where(eq(schema.agents.orgId, orgId));
   res.json(agents.map(stripAgentSecrets));
 });
 
 apiRouter.get("/agents/:id", async (req, res) => {
   const db = getDb();
+  const orgId = getOrgId(req);
   const [agent] = await db.select().from(schema.agents).where(eq(schema.agents.id, req.params.id));
-  if (!agent) return res.status(404).json({ error: "Not found" });
+  if (!agent || agent.orgId !== orgId) return res.status(404).json({ error: "Not found" });
   const [policy] = await db
     .select()
     .from(schema.agentPolicies)
@@ -184,10 +221,11 @@ apiRouter.post("/agents", async (req, res) => {
   if (!parsed.success) return res.status(400).json(parsed.error.flatten());
 
   const db = getDb();
+  const orgId = getOrgId(req);
   const id = `agent_${Date.now()}`;
   const row = {
     id,
-    orgId: env.orgId,
+    orgId,
     name: parsed.data.name,
     category: parsed.data.category,
     description: parsed.data.description ?? null,
@@ -219,8 +257,9 @@ apiRouter.patch("/agents/:id", async (req, res) => {
   if (!parsed.success) return res.status(400).json(parsed.error.flatten());
 
   const db = getDb();
+  const orgId = getOrgId(req);
   const [agent] = await db.select().from(schema.agents).where(eq(schema.agents.id, req.params.id));
-  if (!agent) return res.status(404).json({ error: "Not found" });
+  if (!agent || agent.orgId !== orgId) return res.status(404).json({ error: "Not found" });
 
   const updates: Record<string, string | null> = {};
   if (parsed.data.name) updates.name = parsed.data.name;
@@ -237,18 +276,27 @@ apiRouter.get("/vendors", async (_req, res) => {
   res.json(vendors);
 });
 
-apiRouter.get("/approvals", async (_req, res) => {
+apiRouter.get("/approvals", async (req, res) => {
   const db = getDb();
   const rows = await db
     .select()
     .from(schema.approvals)
-    .where(eq(schema.approvals.orgId, env.orgId))
+    .where(eq(schema.approvals.orgId, getOrgId(req)))
     .orderBy(desc(schema.approvals.requestedAt));
   res.json(rows);
 });
 
 apiRouter.post("/approvals/:id/approve", async (req, res) => {
   try {
+    const db = getDb();
+    const orgId = getOrgId(req);
+    const [approval] = await db
+      .select()
+      .from(schema.approvals)
+      .where(eq(schema.approvals.id, req.params.id));
+    if (!approval || approval.orgId !== orgId) {
+      return res.status(404).json({ error: "Not found" });
+    }
     const result = await approveAndSettle(req.params.id);
     res.json(result);
   } catch (err) {
@@ -257,32 +305,48 @@ apiRouter.post("/approvals/:id/approve", async (req, res) => {
 });
 
 apiRouter.post("/approvals/:id/deny", async (req, res) => {
+  const db = getDb();
+  const orgId = getOrgId(req);
+  const [approval] = await db
+    .select()
+    .from(schema.approvals)
+    .where(eq(schema.approvals.id, req.params.id));
+  if (!approval || approval.orgId !== orgId) {
+    return res.status(404).json({ error: "Not found" });
+  }
   await denyApproval(req.params.id);
   res.json({ ok: true });
 });
 
-apiRouter.get("/transactions", async (_req, res) => {
+apiRouter.get("/transactions", async (req, res) => {
   const db = getDb();
   const rows = await db
     .select()
     .from(schema.transactions)
-    .where(eq(schema.transactions.orgId, env.orgId))
+    .where(eq(schema.transactions.orgId, getOrgId(req)))
     .orderBy(desc(schema.transactions.createdAt));
   res.json(rows);
 });
 
 apiRouter.get("/logs", async (req, res) => {
   const db = getDb();
+  const orgId = getOrgId(req);
+  const allowedAgentIds = await agentIdsForOrg(orgId);
   const runId = req.query.runId as string | undefined;
   const agentId = req.query.agentId as string | undefined;
 
-  let rows;
+  if (agentId && !allowedAgentIds.includes(agentId)) {
+    return res.status(404).json({ error: "Not found" });
+  }
+
+  let rows: AuditLog[] = [];
   if (runId) {
     rows = await db
       .select()
       .from(schema.auditLogs)
       .where(eq(schema.auditLogs.runId, runId))
       .orderBy(schema.auditLogs.createdAt);
+    rows = rows.filter((r) => allowedAgentIds.includes(r.agentId));
   } else if (agentId) {
     rows = await db
       .select()
@@ -290,8 +354,15 @@ apiRouter.get("/logs", async (req, res) => {
       .where(eq(schema.auditLogs.agentId, agentId))
       .orderBy(desc(schema.auditLogs.createdAt))
       .limit(100);
+  } else if (allowedAgentIds.length > 0) {
+    rows = await db
+      .select()
+      .from(schema.auditLogs)
+      .where(inArray(schema.auditLogs.agentId, allowedAgentIds))
+      .orderBy(desc(schema.auditLogs.createdAt))
+      .limit(100);
   } else {
-    rows = await db.select().from(schema.auditLogs).orderBy(desc(schema.auditLogs.createdAt)).limit(100);
+    rows = [];
   }
 
   res.json(rows);
@@ -306,7 +377,17 @@ apiRouter.post("/agent/run", async (req, res) => {
   const parsed = runSchema.safeParse(req.body);
   if (!parsed.success) return res.status(400).json(parsed.error.flatten());
 
-  const runId = await createRun(parsed.data.agentId, parsed.data.prompt);
+  const db = getDb();
+  const orgId = getOrgId(req);
+  const [agent] = await db
+    .select()
+    .from(schema.agents)
+    .where(eq(schema.agents.id, parsed.data.agentId));
+  if (!agent || agent.orgId !== orgId) {
+    return res.status(404).json({ error: "Agent not found" });
+  }
+
+  const runId = await createRun(parsed.data.agentId, parsed.data.prompt, orgId);
   res.status(202).json({ runId });
 });
 
@@ -386,8 +467,9 @@ apiRouter.post("/agents/:id/topup", async (req, res) => {
   if (amount <= 0) return res.status(400).json({ error: "Invalid amount" });
 
   const db = getDb();
+  const orgId = getOrgId(req);
   const [agent] = await db.select().from(schema.agents).where(eq(schema.agents.id, req.params.id));
-  if (!agent) return res.status(404).json({ error: "Not found" });
+  if (!agent || agent.orgId !== orgId) return res.status(404).json({ error: "Not found" });
 
   const { fetchWalletBalances } = await import("../chain/wallet.js");
   const onChain = agent.walletAddress

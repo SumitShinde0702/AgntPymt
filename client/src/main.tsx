@@ -3,6 +3,7 @@ import { createRoot } from "react-dom/client";
 import { BrowserRouter } from "react-router-dom";
 import { ClerkProvider } from "@clerk/clerk-react";
 import { Web3Provider } from "./providers/Web3Provider";
+import { ApiAuthProvider } from "./providers/ApiAuthProvider";
 import App from "./App";
 import "./index.css";
 
@@ -20,6 +21,12 @@ const app = (
 
 root.render(
   <StrictMode>
-    {clerkKey ? <ClerkProvider publishableKey={clerkKey}>{app}</ClerkProvider> : app}
+    {clerkKey ? (
+      <ClerkProvider publishableKey={clerkKey}>
+        <ApiAuthProvider>{app}</ApiAuthProvider>
+      </ClerkProvider>
+    ) : (
+      app
+    )}
   </StrictMode>
 );

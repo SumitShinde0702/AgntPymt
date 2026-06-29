@@ -15,4 +15,4 @@ export function getDb() {
 
 export { schema };
 export type { Agent, Vendor, Run, Approval, Transaction, AuditLog } from "./schema.js";
-export { eq, desc, and, or } from "drizzle-orm";
+export { eq, desc, and, or, inArray } from "drizzle-orm";

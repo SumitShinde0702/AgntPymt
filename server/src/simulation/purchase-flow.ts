@@ -255,7 +255,7 @@ export async function runPurchaseFlow(params: PurchaseParams) {
     const approvalId = nanoid();
     await db.insert(schema.approvals).values({
       id: approvalId,
-      orgId: env.orgId,
+      orgId: agent.orgId,
       agentId: params.agentId,
       runId: params.runId,
       sellerSessionId: sessionId,
@@ -427,7 +427,7 @@ export async function settlePurchase(params: {
   const txId = nanoid();
   await db.insert(schema.transactions).values({
     id: txId,
-    orgId: env.orgId,
+    orgId: agent.orgId,
     agentId: params.agentId,
     runId: params.runId,
     approvalId: params.approvalId ?? null,
@@ -508,7 +508,7 @@ export async function approveAndSettle(approvalId: string) {
   const txId = nanoid();
   await db.insert(schema.transactions).values({
     id: txId,
-    orgId: env.orgId,
+    orgId: approval.orgId,
     agentId: approval.agentId,
     runId: approval.runId,
     approvalId,

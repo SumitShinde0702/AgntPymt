@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useState } from "react";
 import { api, type DashboardData } from "../lib/api";
+import { NewAgentModal } from "../components/agents/NewAgentModal";
 import { KpiCard } from "../components/dashboard/KpiCard";
 import { AgentConsole } from "../components/dashboard/AgentConsole";
 import { AgentsTable } from "../components/dashboard/AgentsTable";
@@ -9,6 +10,7 @@ import { RecentTransactions } from "../components/dashboard/RecentTransactions";
 
 export function DashboardPage() {
   const [data, setData] = useState<DashboardData | null>(null);
+  const [showNewAgent, setShowNewAgent] = useState(false);
 
   const load = useCallback(() => {
     void api<DashboardData>("/api/dashboard").then(setData);
@@ -51,10 +53,14 @@ export function DashboardPage() {
         />
       </div>
 
-      <AgentConsole agents={data.agents} onRunComplete={load} />
+      <AgentConsole
+        agents={data.agents}
+        onRunComplete={load}
+        onNewAgent={() => setShowNewAgent(true)}
+      />
 
       <div className="grid gap-6 xl:grid-cols-2">
-        <AgentsTable agents={data.agents} onUpdate={load} />
+        <AgentsTable agents={data.agents} onNewAgent={() => setShowNewAgent(true)} />
         <PendingApprovals approvals={data.pendingApprovals} agents={data.agents} onUpdate={load} />
       </div>
 
@@ -62,6 +68,12 @@ export function DashboardPage() {
         <WalletQuickLink agents={data.agents} />
         <RecentTransactions transactions={data.recentTransactions} />
       </div>
+
+      <NewAgentModal
+        open={showNewAgent}
+        onClose={() => setShowNewAgent(false)}
+        onCreated={load}
+      />
     </div>
   );
 }

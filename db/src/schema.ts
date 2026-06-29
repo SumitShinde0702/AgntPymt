@@ -7,6 +7,13 @@ export const organizations = sqliteTable("organizations", {
   createdAt: text("created_at").notNull(),
 });
 
+export const users = sqliteTable("users", {
+  id: text("id").primaryKey(),
+  orgId: text("org_id").notNull(),
+  email: text("email"),
+  createdAt: text("created_at").notNull(),
+});
+
 export const agents = sqliteTable("agents", {
   id: text("id").primaryKey(),
   orgId: text("org_id").notNull(),

@@ -12,6 +12,7 @@
   },
   "dependencies": {
     "@agntpymt/db": "*",
+    "@clerk/express": "^2.1.32",
     "@modelcontextprotocol/sdk": "^1.12.1",
     "@x402/core": "^2.17.0",
     "@x402/evm": "^2.17.0",

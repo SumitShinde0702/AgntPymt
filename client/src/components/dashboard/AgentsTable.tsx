@@ -1,6 +1,4 @@
-import { useState } from "react";
 import { MoreHorizontal } from "lucide-react";
-import { NewAgentModal } from "../agents/NewAgentModal";
 import type { Agent } from "../../lib/api";
 
 const colorMap: Record<string, string> = {
@@ -12,38 +10,51 @@ const colorMap: Record<string, string> = {
 
 type Props = {
   agents: Agent[];
-  onUpdate?: () => void;
+  onNewAgent?: () => void;
 };
 
-export function AgentsTable({ agents, onUpdate }: Props) {
-  const [showNewAgent, setShowNewAgent] = useState(false);
-
+export function AgentsTable({ agents, onNewAgent }: Props) {
   return (
-    <>
-      <div className="rounded-2xl border border-slate-200 bg-white shadow-sm">
-        <div className="flex items-center justify-between border-b border-slate-200 px-5 py-4">
-          <h2 className="text-lg font-semibold">My Agents</h2>
-          <button
-            type="button"
-            onClick={() => setShowNewAgent(true)}
-            className="rounded-lg bg-brand-600 px-3 py-1.5 text-sm font-medium text-white hover:bg-brand-700"
-          >
-            + New Agent
-          </button>
-        </div>
-        <div className="overflow-x-auto">
-          <table className="w-full text-sm">
-            <thead className="bg-slate-50 text-left text-slate-500">
+    <div className="rounded-2xl border border-slate-200 bg-white shadow-sm">
+      <div className="flex items-center justify-between border-b border-slate-200 px-5 py-4">
+        <h2 className="text-lg font-semibold">My Agents</h2>
+        <button
+          type="button"
+          onClick={onNewAgent}
+          className="rounded-lg bg-brand-600 px-3 py-1.5 text-sm font-medium text-white hover:bg-brand-700"
+        >
+          + New Agent
+        </button>
+      </div>
+      <div className="overflow-x-auto">
+        <table className="w-full text-sm">
+          <thead className="bg-slate-50 text-left text-slate-500">
+            <tr>
+              <th className="px-5 py-3 font-medium">Agent</th>
+              <th className="px-5 py-3 font-medium">Wallet</th>
+              <th className="px-5 py-3 font-medium">Balance</th>
+              <th className="px-5 py-3 font-medium">Status</th>
+              <th className="px-5 py-3 font-medium"></th>
+            </tr>
+          </thead>
+          <tbody>
+            {agents.length === 0 ? (
               <tr>
-                <th className="px-5 py-3 font-medium">Agent</th>
-                <th className="px-5 py-3 font-medium">Wallet</th>
-                <th className="px-5 py-3 font-medium">Balance</th>
-                <th className="px-5 py-3 font-medium">Status</th>
-                <th className="px-5 py-3 font-medium"></th>
+                <td colSpan={5} className="px-5 py-10 text-center text-sm text-slate-500">
+                  No agents yet.{" "}
+                  {onNewAgent && (
+                    <button
+                      type="button"
+                      onClick={onNewAgent}
+                      className="font-medium text-brand-600 hover:underline"
+                    >
+                      Create one
+                    </button>
+                  )}
+                </td>
               </tr>
-            </thead>
-            <tbody>
-              {agents.map((a) => (
+            ) : (
+              agents.map((a) => (
                 <tr key={a.id} className="border-t border-slate-100">
                   <td className="px-5 py-4">
                     <div className="flex items-center gap-3">
@@ -73,17 +84,11 @@ export function AgentsTable({ agents, onUpdate }: Props) {
                     </button>
                   </td>
                 </tr>
-              ))}
-            </tbody>
-          </table>
-        </div>
+              ))
+            )}
+          </tbody>
+        </table>
       </div>
-
-      <NewAgentModal
-        open={showNewAgent}
-        onClose={() => setShowNewAgent(false)}
-        onCreated={() => onUpdate?.()}
-      />
-    </>
+    </div>
   );
 }

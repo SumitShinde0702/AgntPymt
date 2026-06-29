@@ -141,12 +141,12 @@ async function completeRunWithLocalLogic(runId: string, agentId: string, prompt:
     .where(eq(schema.runs.id, runId));
 }
 
-export async function createRun(agentId: string, prompt: string) {
+export async function createRun(agentId: string, prompt: string, orgId: string) {
   const db = getDb();
   const runId = nanoid();
   await db.insert(schema.runs).values({
     id: runId,
-    orgId: "org_demo",
+    orgId,
     agentId,
     prompt,
     status: "running",

@@ -6,6 +6,7 @@ import { fileURLToPath } from "node:url";
 import { env, rootDir } from "./config.js";
 import { apiRouter } from "./routes/api.js";
 import { x402Middleware } from "./chain/x402.js";
+import { apiAuthMiddleware, installClerkMiddleware } from "./middleware/auth.js";
 
 async function main() {
   const { getDb } = await import("@agntpymt/db");
@@ -14,8 +15,9 @@ async function main() {
   const app = express();
   app.use(cors({ origin: true }));
   app.use(express.json());
+  app.use(installClerkMiddleware());
   app.use(x402Middleware);
-  app.use("/api", apiRouter);
+  app.use("/api", apiAuthMiddleware, apiRouter);
 
   const clientDist = path.join(rootDir, "client", "dist");
   if (fs.existsSync(clientDist)) {

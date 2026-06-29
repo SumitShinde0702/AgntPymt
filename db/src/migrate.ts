@@ -7,6 +7,13 @@ CREATE TABLE IF NOT EXISTS organizations (
   created_at TEXT NOT NULL
 );
 
+CREATE TABLE IF NOT EXISTS users (
+  id TEXT PRIMARY KEY,
+  org_id TEXT NOT NULL,
+  email TEXT,
+  created_at TEXT NOT NULL
+);
+
 CREATE TABLE IF NOT EXISTS agents (
   id TEXT PRIMARY KEY,
   org_id TEXT NOT NULL,

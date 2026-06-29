@@ -1,4 +1,5 @@
 import { Link } from "react-router-dom";
+import { SignedIn, SignedOut } from "@clerk/clerk-react";
 import {
   ArrowRight,
   Bot,
@@ -9,6 +10,7 @@ import {
   GitBranch,
   Lock,
 } from "lucide-react";
+import { AuthControls } from "../components/auth/AuthControls";
 
 const features = [
   {
@@ -55,6 +57,8 @@ const demoFlows = [
   },
 ];
 
+const clerkEnabled = Boolean(import.meta.env.VITE_CLERK_PUBLISHABLE_KEY);
+
 export function LandingPage() {
   return (
     <div className="min-h-screen bg-slate-950 text-white">
@@ -69,12 +73,36 @@ export function LandingPage() {
               <div className="text-xs text-slate-400">Agent Payments Control Plane</div>
             </div>
           </div>
-          <Link
-            to="/dashboard"
-            className="rounded-lg bg-brand-600 px-4 py-2 text-sm font-medium text-white transition hover:bg-brand-500"
-          >
-            Launch demo
-          </Link>
+          <div className="flex items-center gap-3">
+            <AuthControls />
+            {clerkEnabled ? (
+              <>
+                <SignedIn>
+                  <Link
+                    to="/dashboard"
+                    className="rounded-lg bg-brand-600 px-4 py-2 text-sm font-medium text-white transition hover:bg-brand-500"
+                  >
+                    Dashboard
+                  </Link>
+                </SignedIn>
+                <SignedOut>
+                  <Link
+                    to="/sign-in"
+                    className="rounded-lg bg-brand-600 px-4 py-2 text-sm font-medium text-white transition hover:bg-brand-500"
+                  >
+                    Launch demo
+                  </Link>
+                </SignedOut>
+              </>
+            ) : (
+              <Link
+                to="/dashboard"
+                className="rounded-lg bg-brand-600 px-4 py-2 text-sm font-medium text-white transition hover:bg-brand-500"
+              >
+                Launch demo
+              </Link>
+            )}
+          </div>
         </div>
       </header>
 

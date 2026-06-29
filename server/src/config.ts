@@ -7,6 +7,18 @@ const rootDir = path.resolve(__dirname, "../..");
 
 dotenv.config({ path: path.join(rootDir, ".env") });
 
+const clerkPublishableKey =
+  process.env.CLERK_PUBLISHABLE_KEY ?? process.env.VITE_CLERK_PUBLISHABLE_KEY ?? "";
+const clerkSecretKey = process.env.CLERK_SECRET_KEY ?? "";
+
+// @clerk/express reads CLERK_* from process.env — sync from VITE_* fallback.
+if (clerkPublishableKey && !process.env.CLERK_PUBLISHABLE_KEY) {
+  process.env.CLERK_PUBLISHABLE_KEY = clerkPublishableKey;
+}
+if (clerkSecretKey && !process.env.CLERK_SECRET_KEY) {
+  process.env.CLERK_SECRET_KEY = clerkSecretKey;
+}
+
 export const env = {
   port: Number(process.env.PORT ?? 3001),
   simulatePayments: process.env.SIMULATE_PAYMENTS !== "false",
@@ -15,7 +27,8 @@ export const env = {
   facilitatorUrl: process.env.FACILITATOR_URL ?? "https://x402.org/facilitator",
   hermesApiUrl: process.env.HERMES_API_URL ?? "http://localhost:8642",
   hermesApiKey: process.env.HERMES_API_KEY ?? "",
-  clerkSecretKey: process.env.CLERK_SECRET_KEY ?? "",
+  clerkSecretKey,
+  clerkPublishableKey,
   openaiApiKey: process.env.OPENAI_API_KEY ?? "",
   openaiModel: process.env.OPENAI_MODEL ?? "gpt-4o-mini",
   orgId: "org_demo",
