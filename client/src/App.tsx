@@ -1,5 +1,6 @@
-import { Routes, Route, Navigate } from "react-router-dom";
+import { Routes, Route } from "react-router-dom";
 import { AppLayout } from "./components/layout/AppLayout";
+import { LandingPage } from "./pages/LandingPage";
 import { DashboardPage } from "./pages/DashboardPage";
 import { AgentsPage } from "./pages/AgentsPage";
 import { WalletsPage } from "./pages/WalletsPage";
@@ -11,8 +12,8 @@ import { PlaceholderPage } from "./pages/PlaceholderPage";
 export default function App() {
   return (
     <Routes>
+      <Route path="/" element={<LandingPage />} />
       <Route element={<AppLayout />}>
-        <Route index element={<Navigate to="/dashboard" replace />} />
         <Route path="dashboard" element={<DashboardPage />} />
         <Route path="agents" element={<AgentsPage />} />
         <Route path="wallets" element={<WalletsPage />} />

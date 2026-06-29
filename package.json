@@ -11,6 +11,7 @@
     "dev": "concurrently -n client,server -c cyan,violet \"npm run dev -w client\" \"npm run dev -w server\"",
     "dev:all": "concurrently -n client,server,hermes -c cyan,violet,green \"npm run dev -w client\" \"npm run dev -w server\" \"npm run dev:hermes -w server\"",
     "build": "npm run build -w db && npm run build -w server && npm run build -w client",
+    "start:prod": "npm run db:migrate && npm run db:seed && npm run start -w server",
     "db:generate": "npm run generate -w db",
     "db:migrate": "npm run migrate -w db",
     "db:seed": "npm run seed -w db"

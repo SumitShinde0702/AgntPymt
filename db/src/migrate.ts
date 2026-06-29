@@ -1,13 +1,4 @@
-import fs from "node:fs";
-import path from "node:path";
-import { fileURLToPath } from "node:url";
-import dotenv from "dotenv";
-import { createClient } from "@libsql/client";
-
-const __dirname = path.dirname(fileURLToPath(import.meta.url));
-const rootDir = path.resolve(__dirname, "../..");
-
-dotenv.config({ path: path.join(rootDir, ".env") });
+import { createLibsqlClient, ensureLocalDbDir, resolveDbUrl } from "./connection.js";
 
 const migrationSql = `
 CREATE TABLE IF NOT EXISTS organizations (
@@ -110,12 +101,9 @@ CREATE TABLE IF NOT EXISTS audit_logs (
 );
 `;
 
-const dbPath = process.env.DATABASE_URL?.replace(/^file:/, "") ?? "dev.db";
-const absoluteDbPath = path.isAbsolute(dbPath) ? dbPath : path.join(rootDir, dbPath);
+ensureLocalDbDir();
 
-fs.mkdirSync(path.dirname(absoluteDbPath), { recursive: true });
-
-const client = createClient({ url: `file:${absoluteDbPath}` });
+const client = createLibsqlClient();
 await client.executeMultiple(migrationSql);
 
 const alters = [
@@ -134,4 +122,4 @@ for (const sql of alters) {
 
 client.close();
 
-console.log(`Migrated database at ${absoluteDbPath}`);
+console.log(`Migrated database at ${resolveDbUrl()}`);

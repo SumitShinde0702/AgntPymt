@@ -7,6 +7,17 @@ const now = () => new Date().toISOString();
 async function seed() {
   const db = getDb();
 
+  const existing = await db
+    .select({ id: schema.organizations.id })
+    .from(schema.organizations)
+    .where(eq(schema.organizations.id, ORG_ID))
+    .limit(1);
+
+  if (existing.length > 0) {
+    console.log("Demo data already seeded, skipping.");
+    return;
+  }
+
   await db.delete(schema.auditLogs);
   await db.delete(schema.transactions);
   await db.delete(schema.approvals);
