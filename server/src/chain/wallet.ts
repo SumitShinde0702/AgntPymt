@@ -26,7 +26,7 @@ const erc20Abi = [
 
 export const publicClient = createPublicClient({
   chain: baseSepolia,
-  transport: http(),
+  transport: http(undefined, { timeout: 15_000 }),
 });
 
 export function createAgentWallet() {
@@ -89,7 +89,7 @@ export async function transferUsdcFromAgentWallet(
   const walletClient = createWalletClient({
     account,
     chain: baseSepolia,
-    transport: http(),
+    transport: http(undefined, { timeout: 15_000 }),
   });
 
   const hash = await walletClient.writeContract({

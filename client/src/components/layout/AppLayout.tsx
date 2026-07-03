@@ -14,6 +14,7 @@ import {
 import { useEffect, useState } from "react";
 import { api, type HealthData, type DashboardData } from "../../lib/api";
 import { AuthControls } from "../auth/AuthControls";
+import { ApprovalToast } from "./ApprovalToast";
 
 const nav = [
   { to: "/dashboard", label: "Dashboard", icon: LayoutDashboard },
@@ -30,6 +31,9 @@ export function AppLayout() {
   const [health, setHealth] = useState<HealthData | null>(null);
   const [approvalCount, setApprovalCount] = useState(0);
   const [activeWallets, setActiveWallets] = useState(4);
+  const [hermesProfiles, setHermesProfiles] = useState<{ provisioned: number; total: number } | null>(
+    null
+  );
 
   useEffect(() => {
     const load = () => {
@@ -37,6 +41,10 @@ export function AppLayout() {
       void api<DashboardData>("/api/dashboard").then((d) => {
         setApprovalCount(Array.isArray(d.pendingApprovals) ? d.pendingApprovals.length : 0);
         setActiveWallets(d.activeWallets ?? 4);
+        setHermesProfiles({
+          provisioned: d.kpis.hermesProfilesProvisioned ?? 0,
+          total: d.agents.length,
+        });
       });
     };
     load();
@@ -110,16 +118,32 @@ export function AppLayout() {
               className={`inline-flex items-center gap-2 rounded-full px-3 py-1 text-sm font-medium ${
                 health?.daemon === "running"
                   ? "bg-emerald-50 text-emerald-700"
-                  : "bg-amber-50 text-amber-700"
+                  : health?.daemon === "auth_error"
+                    ? "bg-amber-50 text-amber-800"
+                    : "bg-amber-50 text-amber-700"
               }`}
             >
               <span
                 className={`h-2 w-2 rounded-full ${
-                  health?.daemon === "running" ? "bg-emerald-500" : "bg-amber-500"
+                  health?.daemon === "running"
+                    ? "bg-emerald-500"
+                    : health?.daemon === "auth_error"
+                      ? "bg-amber-600"
+                      : "bg-amber-500"
                 }`}
               />
-              Daemon: {health?.daemon === "running" ? "Running" : "Degraded"}
+              Daemon:{" "}
+              {health?.daemon === "running"
+                ? "Running"
+                : health?.daemon === "auth_error"
+                  ? "Auth error"
+                  : "Degraded"}
             </span>
+            {hermesProfiles && (
+              <span className="rounded-full bg-slate-100 px-3 py-1 text-xs font-medium text-slate-700">
+                Hermes profiles: {hermesProfiles.provisioned}/{hermesProfiles.total}
+              </span>
+            )}
             {health?.simulatePayments && (
               <span className="rounded-full bg-amber-100 px-3 py-1 text-xs font-medium text-amber-800">
                 Simulated Commerce
@@ -148,6 +172,7 @@ export function AppLayout() {
           <span>Built with care for AI Agents</span>
         </footer>
       </div>
+      <ApprovalToast />
     </div>
   );
 }

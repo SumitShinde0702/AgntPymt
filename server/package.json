@@ -4,11 +4,12 @@
   "private": true,
   "type": "module",
   "scripts": {
-    "dev": "tsx watch src/index.ts",
+    "dev": "npm run mcp:build && tsx watch src/index.ts",
     "build": "tsc",
+    "mcp:build": "tsc",
     "start": "node dist/index.js",
-    "dev:hermes": "hermes gateway",
-    "mcp": "tsx src/mcp/index.ts"
+    "dev:hermes": "python ../scripts/hermes-gateway.py",
+    "mcp": "node dist/mcp/index.js"
   },
   "dependencies": {
     "@agntpymt/db": "*",
@@ -23,6 +24,7 @@
     "express": "^4.21.2",
     "nanoid": "^5.0.9",
     "viem": "^2.53.1",
+    "yaml": "^2.9.0",
     "zod": "^3.24.1"
   },
   "devDependencies": {

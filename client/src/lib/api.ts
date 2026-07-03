@@ -106,6 +106,7 @@ export type DashboardData = {
     activeAgents: string;
     pendingApprovals: number;
     spend30DaysUsd: number;
+    hermesProfilesProvisioned?: number;
   };
   agents: Agent[];
   pendingApprovals: Approval[];
@@ -130,16 +131,63 @@ export type Agent = {
   iconColor: string;
   walletAddress: string | null;
   balanceUsd: number;
+  hermesProvisioned?: boolean;
+  hermesProfileName?: string | null;
+  hermesSkillCount?: number;
+  hermesMcpCount?: number;
+};
+
+export type HermesSkill = {
+  id: string;
+  name: string;
+  description: string;
+  content: string;
+};
+
+export type HermesMcpServer = {
+  name: string;
+  command?: string;
+  args?: string[];
+  url?: string;
+  env?: Record<string, string>;
+  headers?: Record<string, string>;
+  enabled?: boolean;
+  protected?: boolean;
+};
+
+export type HermesCapabilities = {
+  skills: HermesSkill[];
+  mcpServers: HermesMcpServer[];
+};
+
+export type HermesProfileStatus = {
+  profileName: string;
+  profilePath: string;
+  provisioned: boolean;
+  soul: string;
+  capabilities: HermesCapabilities;
 };
 
 export type Approval = {
   id: string;
   agentId: string;
+  runId?: string | null;
   vendorName: string;
   amountUsd: number;
   reason: string;
   status: string;
+  kind?: string;
+  toolName?: string | null;
+  hermesRunId?: string | null;
   requestedAt: string;
+};
+
+export type RunHistory = {
+  runId: string;
+  status: string;
+  agentId: string;
+  prompt: string;
+  events: RunEvent[];
 };
 
 export type Transaction = {
@@ -165,6 +213,8 @@ export type RunEvent = {
 export type HealthData = {
   status: string;
   daemon: string;
+  hermesProfilesProvisioned?: number;
+  hermesProfilesTotal?: number;
   simulatePayments: boolean;
   paymentMode?: string;
   facilitatorUrl?: string;

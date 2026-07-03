@@ -1,3 +1,4 @@
+import type { RequestHandler } from "express";
 import { eq, getDb, schema } from "@agntpymt/db";
 import { HTTPFacilitatorClient } from "@x402/core/server";
 import { paymentMiddleware, x402ResourceServer } from "@x402/express";
@@ -11,7 +12,68 @@ import { fetchWalletBalances } from "./wallet.js";
 
 export const X402_NETWORK = "eip155:84532" as const;
 
+/** Shown when OpenX402 facilitator requires payTo registration (not needed for x402.org / CDP). */
+export const OPENX402_REGISTER_URL = "https://openx402.ai/register";
+
 const pendingSettlementPrices = new Map<string, number>();
+
+function decodePaymentRequiredHeader(header: string | null): { error?: string } | null {
+  if (!header) return null;
+  try {
+    const json = Buffer.from(header, "base64").toString("utf8");
+    return JSON.parse(json) as { error?: string };
+  } catch {
+    return null;
+  }
+}
+
+export function formatX402Failure(
+  status: number,
+  body: string,
+  headers: { get(name: string): string | null }
+): string {
+  const paymentRequired =
+    decodePaymentRequiredHeader(headers.get("PAYMENT-REQUIRED")) ??
+    decodePaymentRequiredHeader(headers.get("X-PAYMENT-REQUIRED"));
+  const code = paymentRequired?.error;
+
+  if (code === "address_not_registered") {
+    return (
+      `Vendor wallet ${env.evmPayToAddress} is not registered with the x402 facilitator. ` +
+      `Register it at ${OPENX402_REGISTER_URL} to restore x402 USDC settlement.`
+    );
+  }
+
+  const paymentResponse =
+    headers.get("PAYMENT-RESPONSE") ?? headers.get("X-PAYMENT-RESPONSE");
+  const detail = body.trim() || paymentResponse || code || "facilitator rejected payment";
+  return `x402 settlement failed (${status}): ${detail}`;
+}
+
+export async function checkPayToWhitelisted(payTo = env.evmPayToAddress): Promise<boolean> {
+  if (!payTo || !env.facilitatorUrl.includes("openx402")) return true;
+  try {
+    const res = await fetch(`${env.facilitatorUrl}/whitelist/${payTo}`, {
+      signal: AbortSignal.timeout(10_000),
+    });
+    if (!res.ok) return true;
+    const data = (await res.json()) as { whitelisted?: boolean };
+    return data.whitelisted === true;
+  } catch {
+    return true;
+  }
+}
+
+export async function warnIfPayToNotWhitelisted(): Promise<void> {
+  if (env.simulatePayments || !env.evmPayToAddress) return;
+  const ok = await checkPayToWhitelisted();
+  if (!ok) {
+    console.warn(
+      `[x402] EVM_PAY_TO_ADDRESS ${env.evmPayToAddress} is not whitelisted at ${env.facilitatorUrl}.\n` +
+        `       x402 USDC payments will fail until you register at ${OPENX402_REGISTER_URL}`
+    );
+  }
+}
 
 function sessionIdFromPath(path: string): string | null {
   const match = path.match(/\/api\/x402\/vendor\/settle\/([^/]+)$/);
@@ -55,27 +117,45 @@ async function resolveSettlementPrice(path: string): Promise<string> {
   return usdToX402Price(session.finalPriceUsd);
 }
 
-const facilitatorClient = new HTTPFacilitatorClient({ url: env.facilitatorUrl });
-const resourceServer = new x402ResourceServer(facilitatorClient).register(
-  X402_NETWORK,
-  new ExactEvmServerScheme()
-);
+async function assertFacilitatorReady(): Promise<void> {
+  const client = new HTTPFacilitatorClient({ url: env.facilitatorUrl });
+  try {
+    await client.getSupported();
+  } catch (err) {
+    const detail = err instanceof Error ? err.message : String(err);
+    throw new Error(
+      `Facilitator at ${env.facilitatorUrl} failed (${detail}). ` +
+        "For testnet use FACILITATOR_URL=https://x402.org/facilitator or SIMULATE_PAYMENTS=true"
+    );
+  }
+}
 
-export const x402Middleware = paymentMiddleware(
-  {
-    "POST /api/x402/vendor/settle/*": {
-      accepts: {
-        scheme: "exact",
-        network: X402_NETWORK,
-        payTo: env.evmPayToAddress || "0x0000000000000000000000000000000000000000",
-        price: (context) => resolveSettlementPrice(context.path),
+/** Load x402 middleware only in live payment mode — avoids facilitator crash when simulating. */
+export async function createX402Middleware(): Promise<RequestHandler> {
+  await assertFacilitatorReady();
+
+  const facilitatorClient = new HTTPFacilitatorClient({ url: env.facilitatorUrl });
+  const resourceServer = new x402ResourceServer(facilitatorClient).register(
+    X402_NETWORK,
+    new ExactEvmServerScheme()
+  );
+
+  return paymentMiddleware(
+    {
+      "POST /api/x402/vendor/settle/*": {
+        accepts: {
+          scheme: "exact",
+          network: X402_NETWORK,
+          payTo: env.evmPayToAddress || "0x0000000000000000000000000000000000000000",
+          price: (context) => resolveSettlementPrice(context.path),
+        },
+        description: "Vendor fulfillment settlement (x402)",
+        mimeType: "application/json",
       },
-      description: "Vendor fulfillment settlement (x402)",
-      mimeType: "application/json",
     },
-  },
-  resourceServer
-);
+    resourceServer
+  );
+}
 
 const MIN_GAS_ETH = 0.00005;
 
@@ -121,7 +201,7 @@ export async function settleViaX402(
 
     if (!response.ok) {
       const body = await response.text();
-      throw new Error(`x402 settlement failed (${response.status}): ${body}`);
+      throw new Error(formatX402Failure(response.status, body, response.headers));
     }
 
     const paymentResponseHeader = response.headers.get("PAYMENT-RESPONSE");

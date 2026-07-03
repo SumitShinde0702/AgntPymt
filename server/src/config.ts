@@ -27,6 +27,8 @@ export const env = {
   facilitatorUrl: process.env.FACILITATOR_URL ?? "https://x402.org/facilitator",
   hermesApiUrl: process.env.HERMES_API_URL ?? "http://localhost:8642",
   hermesApiKey: process.env.HERMES_API_KEY ?? "",
+  hermesProfilesDir: process.env.HERMES_PROFILES_DIR ?? "",
+  mcpServiceKey: process.env.AGNTPYMT_MCP_KEY ?? "dev-mcp-key",
   clerkSecretKey,
   clerkPublishableKey,
   openaiApiKey: process.env.OPENAI_API_KEY ?? "",

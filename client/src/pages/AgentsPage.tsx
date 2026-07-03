@@ -1,9 +1,18 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { Link } from "react-router-dom";
 import { Bot, CheckCircle, Clock, Copy, ExternalLink, Plus, Wallet } from "lucide-react";
+import { CapabilitiesPanel } from "../components/agents/CapabilitiesPanel";
 import { NegotiationRulesEditor } from "../components/agents/NegotiationRulesEditor";
 import { NewAgentModal } from "../components/agents/NewAgentModal";
-import { api, type AgentPolicy, type AgentWalletRow, type Transaction, type WalletsOverview } from "../lib/api";
+import { SoulEditor } from "../components/agents/SoulEditor";
+import {
+  api,
+  type AgentPolicy,
+  type AgentWalletRow,
+  type HermesProfileStatus,
+  type Transaction,
+  type WalletsOverview,
+} from "../lib/api";
 import { addressExplorerUrl, txExplorerUrl } from "../lib/explorer";
 
 const colorMap: Record<string, string> = {
@@ -12,6 +21,8 @@ const colorMap: Record<string, string> = {
   green: "bg-emerald-100 text-emerald-700",
   orange: "bg-orange-100 text-orange-700",
 };
+
+type Tab = "overview" | "identity" | "capabilities";
 
 function copyText(text: string) {
   void navigator.clipboard.writeText(text);
@@ -86,6 +97,29 @@ function AgentCard({
   policy?: AgentPolicy;
   onPolicySaved: () => void;
 }) {
+  const [tab, setTab] = useState<Tab>("overview");
+  const [hermes, setHermes] = useState<HermesProfileStatus | null>(null);
+  const [hermesLoading, setHermesLoading] = useState(false);
+
+  const loadHermes = useCallback(() => {
+    setHermesLoading(true);
+    void api<HermesProfileStatus>(`/api/agents/${agent.id}/hermes`)
+      .then(setHermes)
+      .finally(() => setHermesLoading(false));
+  }, [agent.id]);
+
+  useEffect(() => {
+    if (tab === "identity" || tab === "capabilities") {
+      loadHermes();
+    }
+  }, [tab, loadHermes]);
+
+  const tabs: { id: Tab; label: string }[] = [
+    { id: "overview", label: "Overview" },
+    { id: "identity", label: "Identity" },
+    { id: "capabilities", label: "Capabilities" },
+  ];
+
   return (
     <div className="rounded-2xl border border-slate-200 bg-white p-5">
       <div className="flex items-start gap-3">
@@ -97,60 +131,112 @@ function AgentCard({
         <div className="min-w-0 flex-1">
           <h3 className="font-semibold">{agent.name}</h3>
           <p className="text-sm capitalize text-slate-500">{agent.category}</p>
+          {hermes?.profileName && (
+            <p className="mt-0.5 truncate font-mono text-[10px] text-slate-400">{hermes.profileName}</p>
+          )}
         </div>
       </div>
 
-      <div className="mt-4 grid grid-cols-2 gap-3">
-        <div className="rounded-lg bg-slate-50 px-3 py-2">
-          <div className="text-xs text-slate-500">USDC (on-chain)</div>
-          <div className="text-lg font-bold text-slate-900">{agent.onChain.usdc.toFixed(2)}</div>
-        </div>
-        <div className="rounded-lg bg-slate-50 px-3 py-2">
-          <div className="text-xs text-slate-500">ETH (gas)</div>
-          <div className="text-lg font-bold text-slate-900">{agent.onChain.eth.toFixed(4)}</div>
-        </div>
+      <div className="mt-4 flex gap-1 border-b border-slate-100">
+        {tabs.map((t) => (
+          <button
+            key={t.id}
+            type="button"
+            onClick={() => setTab(t.id)}
+            className={`px-3 py-2 text-xs font-medium ${
+              tab === t.id
+                ? "border-b-2 border-brand-600 text-brand-700"
+                : "text-slate-500 hover:text-slate-700"
+            }`}
+          >
+            {t.label}
+          </button>
+        ))}
       </div>
 
-      {agent.walletAddress ? (
-        <div className="mt-3 rounded-lg border border-slate-100 bg-slate-50 px-3 py-2">
-          <div className="text-xs text-slate-500">Operational wallet</div>
-          <div className="mt-1 flex items-center gap-2">
-            <span className="min-w-0 flex-1 break-all font-mono text-xs text-slate-700">
-              {agent.walletAddress}
-            </span>
-            <button
-              type="button"
-              onClick={() => copyText(agent.walletAddress!)}
-              className="shrink-0 text-slate-400 hover:text-brand-600"
-              title="Copy address"
-            >
-              <Copy className="h-3.5 w-3.5" />
-            </button>
-            <a
-              href={addressExplorerUrl(agent.walletAddress)}
-              target="_blank"
-              rel="noreferrer"
-              className="shrink-0 text-slate-400 hover:text-brand-600"
-              title="View on BaseScan"
-            >
-              <ExternalLink className="h-3.5 w-3.5" />
-            </a>
+      {tab === "overview" && (
+        <div className="mt-4">
+          <div className="grid grid-cols-2 gap-3">
+            <div className="rounded-lg bg-slate-50 px-3 py-2">
+              <div className="text-xs text-slate-500">USDC (on-chain)</div>
+              <div className="text-lg font-bold text-slate-900">{agent.onChain.usdc.toFixed(2)}</div>
+            </div>
+            <div className="rounded-lg bg-slate-50 px-3 py-2">
+              <div className="text-xs text-slate-500">ETH (gas)</div>
+              <div className="text-lg font-bold text-slate-900">{agent.onChain.eth.toFixed(4)}</div>
+            </div>
+          </div>
+
+          {agent.walletAddress ? (
+            <div className="mt-3 rounded-lg border border-slate-100 bg-slate-50 px-3 py-2">
+              <div className="text-xs text-slate-500">Operational wallet</div>
+              <div className="mt-1 flex items-center gap-2">
+                <span className="min-w-0 flex-1 break-all font-mono text-xs text-slate-700">
+                  {agent.walletAddress}
+                </span>
+                <button
+                  type="button"
+                  onClick={() => copyText(agent.walletAddress!)}
+                  className="shrink-0 text-slate-400 hover:text-brand-600"
+                  title="Copy address"
+                >
+                  <Copy className="h-3.5 w-3.5" />
+                </button>
+                <a
+                  href={addressExplorerUrl(agent.walletAddress)}
+                  target="_blank"
+                  rel="noreferrer"
+                  className="shrink-0 text-slate-400 hover:text-brand-600"
+                  title="View on BaseScan"
+                >
+                  <ExternalLink className="h-3.5 w-3.5" />
+                </a>
+              </div>
+            </div>
+          ) : (
+            <p className="mt-3 text-xs text-brand-600">Wallet provisioning…</p>
+          )}
+
+          {policy && (
+            <NegotiationRulesEditor agentId={agent.id} policy={policy} onSaved={onPolicySaved} />
+          )}
+
+          <div className="mt-4">
+            <h4 className="mb-2 text-xs font-semibold uppercase tracking-wide text-slate-500">
+              Transactions ({transactions.length})
+            </h4>
+            <AgentTransactions transactions={transactions} />
           </div>
         </div>
-      ) : (
-        <p className="mt-3 text-xs text-brand-600">Wallet provisioning…</p>
       )}
 
-      {policy && (
-        <NegotiationRulesEditor agentId={agent.id} policy={policy} onSaved={onPolicySaved} />
+      {tab === "identity" && (
+        <div className="mt-4">
+          {hermesLoading && !hermes ? (
+            <p className="text-sm text-slate-500">Loading profile…</p>
+          ) : hermes ? (
+            <SoulEditor agentId={agent.id} initialSoul={hermes.soul} onSaved={loadHermes} />
+          ) : (
+            <p className="text-sm text-slate-500">Could not load Hermes profile</p>
+          )}
+        </div>
       )}
 
-      <div className="mt-4">
-        <h4 className="mb-2 text-xs font-semibold uppercase tracking-wide text-slate-500">
-          Transactions ({transactions.length})
-        </h4>
-        <AgentTransactions transactions={transactions} />
-      </div>
+      {tab === "capabilities" && (
+        <div className="mt-4">
+          {hermesLoading && !hermes ? (
+            <p className="text-sm text-slate-500">Loading capabilities…</p>
+          ) : hermes ? (
+            <CapabilitiesPanel
+              agentId={agent.id}
+              capabilities={hermes.capabilities}
+              onChanged={loadHermes}
+            />
+          ) : (
+            <p className="text-sm text-slate-500">Could not load capabilities</p>
+          )}
+        </div>
+      )}
     </div>
   );
 }
@@ -205,7 +291,7 @@ export function AgentsPage() {
         <div>
           <h1 className="text-2xl font-bold">Agents</h1>
           <p className="text-slate-500">
-            Each agent has an operational wallet on {wallets.network}. Balances refresh from chain every 30s.
+            Each agent has a Hermes profile (SOUL, skills, MCP), wallet on {wallets.network}, and payment policy.
           </p>
         </div>
         <div className="flex items-center gap-2">

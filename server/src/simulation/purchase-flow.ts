@@ -40,7 +40,35 @@ export type PurchaseParams = {
   resourceId?: string;
   maxBudget?: number;
   source?: string;
+  /** When true (default), skip scripted vendor chat — Hermes or the user owns conversation. */
+  settlementOnly?: boolean;
 };
+
+function resolveFinalPrice(
+  vendor: Vendor,
+  params: PurchaseParams,
+  listPrice: number
+): number {
+  let finalPrice = listPrice;
+  if (params.maxBudget != null && params.maxBudget < finalPrice) {
+    finalPrice = params.maxBudget;
+  }
+
+  const agentTarget =
+    params.maxBudget != null
+      ? Math.min(params.maxBudget, env.demoTransactionFeeUsd)
+      : env.demoTransactionFeeUsd;
+
+  if (finalPrice > agentTarget && vendor.negotiationStyle !== "instant") {
+    if (vendor.counterPriceUsd != null && agentTarget < vendor.counterPriceUsd) {
+      finalPrice = vendor.counterPriceUsd;
+    } else {
+      finalPrice = agentTarget;
+    }
+  }
+
+  return finalPrice;
+}
 
 export async function runPurchaseFlow(params: PurchaseParams) {
   const db = getDb();
@@ -50,6 +78,7 @@ export async function runPurchaseFlow(params: PurchaseParams) {
   const vendors = await db.select().from(schema.vendors);
   const vendor = matchVendor(vendors, params.purchaseIntent, params.category ?? agent.category, params.resourceId);
   const policy = await getAgentPolicy(params.agentId);
+  const settlementOnly = params.settlementOnly ?? !env.openaiApiKey;
 
   const sessionId = nanoid();
   const createdAt = new Date().toISOString();
@@ -66,6 +95,29 @@ export async function runPurchaseFlow(params: PurchaseParams) {
     createdAt,
   });
 
+  let finalPrice = vendor.listPriceUsd;
+
+  if (settlementOnly) {
+    await logAudit({
+      runId: params.runId,
+      agentId: params.agentId,
+      step: "purchase_intent",
+      message: `Purchase: ${params.purchaseIntent}`,
+      actor: agent.name,
+      source: params.source,
+    });
+
+    await logAudit({
+      runId: params.runId,
+      agentId: params.agentId,
+      step: "vendor_matched",
+      message: `${vendor.name} · list price ${formatUsdc(vendor.listPriceUsd)}`,
+      actor: "AgntPymt",
+      source: params.source,
+    });
+
+    finalPrice = resolveFinalPrice(vendor, params, vendor.listPriceUsd);
+  } else {
   const intentMessage = await generateNegotiationMessage({
     kind: "purchase_intent",
     agentName: agent.name,
@@ -122,7 +174,7 @@ export async function runPurchaseFlow(params: PurchaseParams) {
 
   await delay(500);
 
-  let finalPrice = vendor.listPriceUsd;
+  finalPrice = vendor.listPriceUsd;
   if (params.maxBudget != null && params.maxBudget < finalPrice) {
     finalPrice = params.maxBudget;
   }
@@ -230,12 +282,15 @@ export async function runPurchaseFlow(params: PurchaseParams) {
       });
     }
   }
+  } // end theater (settlementOnly === false)
 
   await logAudit({
     runId: params.runId,
     agentId: params.agentId,
     step: "deal_accepted",
-    message: `Deal closed at ${formatUsdc(finalPrice)}`,
+    message: settlementOnly
+      ? `Settled price ${formatUsdc(finalPrice)} with ${vendor.name}`
+      : `Deal closed at ${formatUsdc(finalPrice)}`,
     actor: "AgntPymt",
     payload: { finalPrice },
     source: params.source,
@@ -385,11 +440,16 @@ export async function settlePurchase(params: {
       });
     } catch (err) {
       const reason = err instanceof Error ? err.message : "x402 settlement failed";
+      const hint = reason.includes("Insufficient USDC") || reason.includes("needs testnet ETH")
+        ? " Fund the agent wallet with USDC + ETH on the Wallets page."
+        : reason.includes("not registered")
+          ? " If using facilitator.openx402.ai, register EVM_PAY_TO_ADDRESS at https://openx402.ai/register."
+          : "";
       await logAudit({
         runId: params.runId,
         agentId: params.agentId,
         step: "payment_failed",
-        message: `x402 settlement failed — ${reason}. Fund the agent wallet with USDC + ETH on the Wallets page.`,
+        message: `x402 settlement failed — ${reason}.${hint}`,
         actor: "AgntPymt",
         payload: { agentWallet: agent.walletAddress, protocol: "x402" },
         source: params.source,
@@ -400,19 +460,10 @@ export async function settlePurchase(params: {
 
   const fulfillment = buildFulfillment(params.vendor, params.purchaseIntent, params.finalPrice);
 
-  const fulfillmentMessage = await generateNegotiationMessage({
-    kind: "order_fulfilled",
-    agentName: agent?.name ?? "Agent",
-    vendorName: params.vendor.name,
-    purchaseIntent: params.purchaseIntent,
-    finalPriceUsd: params.finalPrice,
-    autoApproveLimitUsd: 0,
-    targetFeeUsd: env.demoTransactionFeeUsd,
-    fulfillmentSummary:
-      fulfillment.type === "data_delivery"
-        ? `Dataset ${fulfillment.dataset} is ready.`
-        : `Receipt ${(fulfillment as { orderId?: string }).orderId ?? "issued"}.`,
-  });
+  const fulfillmentDetail =
+    fulfillment.type === "data_delivery"
+      ? `dataset ${fulfillment.dataset}`
+      : `order ${(fulfillment as { orderId?: string }).orderId ?? "confirmed"}`;
 
   await db
     .update(schema.sellerSessions)
@@ -457,7 +508,7 @@ export async function settlePurchase(params: {
     runId: params.runId,
     agentId: params.agentId,
     step: "order_fulfilled",
-    message: fulfillmentMessage,
+    message: `${params.vendor.name} fulfilled — ${fulfillmentDetail} (${formatUsdc(params.finalPrice)})`,
     actor: params.vendor.name,
     payload: { ...fulfillment, txHash: txHash ?? undefined } as Record<string, unknown>,
     source: params.source,

@@ -118,6 +118,11 @@ const alters = [
   `ALTER TABLE agents ADD COLUMN wallet_provisioned INTEGER NOT NULL DEFAULT 0`,
   `ALTER TABLE agents ADD COLUMN wallet_private_key TEXT`,
   `ALTER TABLE agent_policies ADD COLUMN negotiation_rules TEXT`,
+  `ALTER TABLE agents ADD COLUMN hermes_profile_name TEXT`,
+  `ALTER TABLE agents ADD COLUMN hermes_provisioned INTEGER NOT NULL DEFAULT 0`,
+  `ALTER TABLE approvals ADD COLUMN kind TEXT NOT NULL DEFAULT 'payment'`,
+  `ALTER TABLE approvals ADD COLUMN hermes_run_id TEXT`,
+  `ALTER TABLE approvals ADD COLUMN tool_name TEXT`,
 ];
 for (const sql of alters) {
   try {

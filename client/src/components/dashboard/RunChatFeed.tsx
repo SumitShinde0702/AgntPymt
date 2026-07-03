@@ -23,6 +23,12 @@ const STEP_LABELS: Record<string, string> = {
   planning: "Planning",
   local_runner: "Local mode",
   hermes_delegated: "Hermes",
+  hermes_message: "Agent",
+  hermes_tool: "Tool",
+  hermes_approval: "Approval needed",
+  hermes_approval_granted: "Approved",
+  hermes_approval_denied: "Denied",
+  user_message: "You",
 };
 
 function txHashFromEvent(event: RunEvent): string | undefined {
@@ -47,11 +53,13 @@ function TxHashLink({ txHash }: { txHash: string }) {
 
 function classifyEvent(event: RunEvent, agentName?: string): ChatRole {
   const actor = event.actor ?? "";
-  if (actor === agentName) return "buyer";
+  if (event.step === "user_message" || actor === "You" || actor === agentName) return "buyer";
   if (
     actor === "AgntPymt" ||
     actor.startsWith("AgntPymt ") ||
     actor === "Hermes" ||
+    event.step === "hermes_tool" ||
+    event.step === "hermes_delegated" ||
     !actor
   ) {
     return "system";
@@ -60,25 +68,41 @@ function classifyEvent(event: RunEvent, agentName?: string): ChatRole {
 }
 
 function isFailureStep(step: string) {
-  return step === "payment_failed" || step === "run_failed";
+  return step === "payment_failed" || step === "run_failed" || step === "hermes_approval_denied";
 }
 
 function isSuccessStep(step: string) {
-  return step === "run_completed" || step === "payment_settled" || step === "order_fulfilled";
+  return (
+    step === "run_completed" ||
+    step === "payment_settled" ||
+    step === "order_fulfilled" ||
+    step === "hermes_approval_granted"
+  );
+}
+
+function isApprovalPendingStep(step: string) {
+  return step === "hermes_approval";
 }
 
 function ChatBubble({
   event,
   role,
   agentName,
+  onHermesApproval,
+  approvalResolved,
 }: {
   event: RunEvent;
   role: ChatRole;
   agentName?: string;
+  onHermesApproval?: (approvalId: string, choice: "approve" | "deny") => void | Promise<void>;
+  approvalResolved?: boolean;
 }) {
   const label = STEP_LABELS[event.step] ?? event.step.replace(/_/g, " ");
   const failed = isFailureStep(event.step);
   const success = isSuccessStep(event.step);
+  const pendingApproval = isApprovalPendingStep(event.step) && !approvalResolved;
+  const approvalId =
+    typeof event.payload?.approvalId === "string" ? event.payload.approvalId : undefined;
   const txHash = txHashFromEvent(event);
 
   if (role === "system") {
@@ -90,16 +114,37 @@ function ChatBubble({
               ? "border border-red-200 bg-red-50 text-red-800"
               : success
                 ? "border border-emerald-200 bg-emerald-50 text-emerald-800"
-                : "border border-slate-200 bg-white text-slate-600"
+                : pendingApproval
+                  ? "border border-amber-200 bg-amber-50 text-amber-900"
+                  : "border border-slate-200 bg-white text-slate-600"
           }`}
         >
           <div className="mb-0.5 flex items-center justify-center gap-1 font-semibold uppercase tracking-wide">
             {failed && <AlertCircle className="h-3 w-3" />}
             {success && <CheckCircle2 className="h-3 w-3" />}
+            {pendingApproval && <AlertCircle className="h-3 w-3 text-amber-600" />}
             {event.step === "policy_evaluated" && <Scale className="h-3 w-3" />}
             {label}
           </div>
           <p className="text-left text-sm leading-snug">{event.message}</p>
+          {pendingApproval && approvalId && onHermesApproval && (
+            <div className="mt-2 flex justify-center gap-2">
+              <button
+                type="button"
+                onClick={() => void onHermesApproval(approvalId, "deny")}
+                className="rounded-lg border border-red-200 bg-white px-3 py-1 text-xs font-medium text-red-600 hover:bg-red-50"
+              >
+                Deny
+              </button>
+              <button
+                type="button"
+                onClick={() => void onHermesApproval(approvalId, "approve")}
+                className="rounded-lg bg-brand-600 px-3 py-1 text-xs font-medium text-white hover:bg-brand-700"
+              >
+                Approve once
+              </button>
+            </div>
+          )}
           {txHash && (
             <div className="text-left">
               <TxHashLink txHash={txHash} />
@@ -111,6 +156,7 @@ function ChatBubble({
   }
 
   const isBuyer = role === "buyer";
+  const isUser = event.step === "user_message" || event.actor === "You";
 
   return (
     <div className={`flex gap-2 px-1 py-1 ${isBuyer ? "flex-row-reverse" : "flex-row"}`}>
@@ -124,7 +170,7 @@ function ChatBubble({
 
       <div className={`max-w-[78%] ${isBuyer ? "items-end" : "items-start"} flex flex-col`}>
         <div className={`mb-0.5 text-[11px] font-medium ${isBuyer ? "text-right text-brand-600" : "text-violet-600"}`}>
-          {isBuyer ? "Your agent" : "Vendor"}
+          {isUser ? "You" : isBuyer ? "Your agent" : "Vendor"}
           {event.actor && event.actor !== agentName && (
             <span className="text-slate-400"> · {event.actor}</span>
           )}
@@ -155,10 +201,17 @@ type Props = {
   events: RunEvent[];
   agentName?: string;
   emptyMessage?: string;
+  onHermesApproval?: (approvalId: string, choice: "approve" | "deny") => void | Promise<void>;
 };
 
-export function RunChatFeed({ events, agentName, emptyMessage }: Props) {
+export function RunChatFeed({ events, agentName, emptyMessage, onHermesApproval }: Props) {
   const visible = events.filter((e) => e.step !== "run_started" || events.length <= 2);
+  const resolvedApprovalIds = new Set(
+    events
+      .filter((e) => e.step === "hermes_approval_granted" || e.step === "hermes_approval_denied")
+      .map((e) => e.payload?.approvalId)
+      .filter((id): id is string => typeof id === "string")
+  );
 
   if (visible.length === 0) {
     return (
@@ -173,11 +226,11 @@ export function RunChatFeed({ events, agentName, emptyMessage }: Props) {
           </div>
         </div>
         <p className="text-sm text-slate-400">
-          {emptyMessage ?? "Your agent negotiates with vendor agents here — like a chat."}
+          {emptyMessage ?? "Agent runs stream here — Hermes replies, tools, and payment steps."}
         </p>
         <p className="mt-1 text-xs text-slate-400">
-          Edit negotiation rules per agent on the <strong>Agents</strong> page. Set{" "}
-          <code className="rounded bg-slate-100 px-1">OPENAI_API_KEY</code> for AI dialogue.
+          Purchases go through AgntPymt policy when the agent calls{" "}
+          <code className="rounded bg-slate-100 px-1">agntpymt_initiate_purchase</code>.
         </p>
       </div>
     );
@@ -185,14 +238,20 @@ export function RunChatFeed({ events, agentName, emptyMessage }: Props) {
 
   return (
     <div className="space-y-2 py-2">
-      {visible.map((e, i) => (
-        <ChatBubble
-          key={`${e.createdAt}-${e.step}-${i}`}
-          event={e}
-          role={classifyEvent(e, agentName)}
-          agentName={agentName}
-        />
-      ))}
+      {visible.map((e, i) => {
+        const approvalId =
+          typeof e.payload?.approvalId === "string" ? e.payload.approvalId : undefined;
+        return (
+          <ChatBubble
+            key={`${e.createdAt}-${e.step}-${i}`}
+            event={e}
+            role={classifyEvent(e, agentName)}
+            agentName={agentName}
+            onHermesApproval={onHermesApproval}
+            approvalResolved={approvalId ? resolvedApprovalIds.has(approvalId) : false}
+          />
+        );
+      })}
     </div>
   );
 }

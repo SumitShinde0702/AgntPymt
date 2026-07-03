@@ -26,6 +26,8 @@ export const agents = sqliteTable("agents", {
   walletPrivateKey: text("wallet_private_key"),
   walletProvisioned: integer("wallet_provisioned", { mode: "boolean" }).notNull().default(false),
   balanceUsd: real("balance_usd").notNull().default(0),
+  hermesProfileName: text("hermes_profile_name"),
+  hermesProvisioned: integer("hermes_provisioned", { mode: "boolean" }).notNull().default(false),
   createdAt: text("created_at").notNull(),
 });
 
@@ -80,6 +82,9 @@ export const approvals = sqliteTable("approvals", {
   amountUsd: real("amount_usd").notNull(),
   reason: text("reason").notNull(),
   status: text("status").notNull().default("pending_approval"),
+  kind: text("kind").notNull().default("payment"),
+  hermesRunId: text("hermes_run_id"),
+  toolName: text("tool_name"),
   requestedAt: text("requested_at").notNull(),
   resolvedAt: text("resolved_at"),
 });

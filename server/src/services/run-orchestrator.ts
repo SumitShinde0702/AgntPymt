@@ -2,9 +2,15 @@ import { nanoid } from "nanoid";
 import { eq } from "@agntpymt/db";
 import { getDb, schema } from "@agntpymt/db";
 import { logAudit } from "./audit.js";
-import { checkHermesHealth, startHermesRun } from "./hermes.js";
+import { runEventBus } from "./event-bus.js";
+import { checkHermesHealth, startHermesRun, streamHermesRunEvents, type HermesRunEvent } from "./hermes.js";
+import { ensureHermesProfile, readSoul, profileDirForAgent, syncHermesGatewayMcpConfig } from "./hermes-profile.js";
 import { runPurchaseFlow } from "../simulation/purchase-flow.js";
 import { matchVendor } from "../simulation/vendor-matcher.js";
+import { createHermesToolApproval } from "./hermes-approvals.js";
+import { setActiveRun, clearActiveRun } from "./run-context.js";
+
+const HERMES_RUN_TIMEOUT_MS = 300_000;
 
 function inferPurchaseFromPrompt(prompt: string, agentCategory: string): string | null {
   const lower = prompt.toLowerCase();
@@ -21,6 +27,232 @@ function inferPurchaseFromPrompt(prompt: string, agentCategory: string): string 
   return null;
 }
 
+function formatToolName(raw: string): string {
+  return raw.replace(/^mcp_agntpymt_/, "").replace(/^agntpymt_/, "agntpymt_");
+}
+
+function hermesTextChunk(event: HermesRunEvent, delta: boolean): string {
+  if (delta) {
+    return String(event.delta ?? event.text ?? event.content ?? "");
+  }
+  return String(event.text ?? event.content ?? event.message ?? "");
+}
+
+function mapHermesEventToAudit(
+  event: HermesRunEvent,
+  options: { streamedReply: boolean }
+) {
+  const type = event.event ?? "hermes.event";
+  const actor = "Hermes";
+
+  if (
+    type === "message.delta" ||
+    type === "message.completed" ||
+    type === "message.done" ||
+    type === "reasoning.available"
+  ) {
+    return null;
+  }
+
+  if (type === "tool.started") {
+    const tool = formatToolName(String(event.tool ?? event.name ?? "unknown"));
+    return {
+      step: "hermes_tool",
+      message: `Calling ${tool}…`,
+      actor,
+      payload: event,
+    };
+  }
+  if (type === "tool.completed") {
+    const tool = formatToolName(String(event.tool ?? event.name ?? "unknown"));
+    const rawErr = (event as { error?: unknown }).error;
+    const failed =
+      rawErr === true ||
+      (typeof rawErr === "string" && rawErr.length > 0 && rawErr !== "false");
+    const errSuffix = failed
+      ? ` — failed${typeof rawErr === "string" && rawErr !== "true" ? `: ${rawErr}` : ""}`
+      : "";
+    return {
+      step: "hermes_tool",
+      message: `${tool} completed${errSuffix}`,
+      actor,
+      payload: event,
+    };
+  }
+  if (type === "run.completed") {
+    const finalText = event.text ? String(event.text).trim() : "";
+    return {
+      step: "run_completed",
+      message: options.streamedReply || !finalText ? "Run complete" : finalText,
+      actor,
+      payload: event,
+    };
+  }
+  if (type === "run.failed") {
+    return {
+      step: "run_failed",
+      message: `Hermes run failed: ${String(event.error ?? "unknown error")}`,
+      actor,
+      payload: event,
+    };
+  }
+  if (type === "run.cancelled") {
+    return {
+      step: "run_failed",
+      message: "Hermes run was cancelled",
+      actor,
+      payload: event,
+    };
+  }
+  if (type === "approval.request") {
+    return {
+      step: "hermes_approval",
+      message: "Hermes requested human approval",
+      actor,
+      payload: event,
+    };
+  }
+
+  return {
+    step: "hermes_event",
+    message: type,
+    actor,
+    payload: event,
+  };
+}
+
+async function watchHermesRun(
+  runId: string,
+  agentId: string,
+  agentName: string,
+  hermesRunId: string
+) {
+  const db = getDb();
+  const streamBase = `hermes-${runId}`;
+  let streamSeq = 0;
+  let currentStreamId = `${streamBase}-${streamSeq}`;
+  let messageBuffer = "";
+  let streamedReply = false;
+  let lastPersisted = "";
+
+  const emitAgentStream = (message: string, streaming: boolean, streamId = currentStreamId) => {
+    if (!message.trim()) return;
+    streamedReply = true;
+    runEventBus.emitRunEvent({
+      runId,
+      step: "hermes_message",
+      message,
+      actor: agentName,
+      payload: { streamId, streaming },
+      createdAt: new Date().toISOString(),
+    });
+  };
+
+  const finalizeAssistantSegment = async (persist = false) => {
+    const text = messageBuffer.trim();
+    if (!text) return;
+    emitAgentStream(text, false);
+    if (persist && text !== lastPersisted) {
+      lastPersisted = text;
+      await logAudit({
+        runId,
+        agentId,
+        step: "hermes_message",
+        message: text,
+        actor: agentName,
+        payload: { streamId: currentStreamId, streaming: false },
+      });
+    }
+    messageBuffer = "";
+    streamSeq += 1;
+    currentStreamId = `${streamBase}-${streamSeq}`;
+  };
+
+  const result = await streamHermesRunEvents(
+    hermesRunId,
+    async (event) => {
+      const type = event.event ?? "";
+
+      if (type === "message.delta") {
+        const chunk = hermesTextChunk(event, true);
+        if (!chunk) return;
+        messageBuffer += chunk;
+        emitAgentStream(messageBuffer, true);
+        return;
+      }
+
+      if (type === "message.completed" || type === "message.done" || type === "message") {
+        const text = hermesTextChunk(event, false) || messageBuffer;
+        messageBuffer = text;
+        await finalizeAssistantSegment(true);
+        return;
+      }
+
+      if (type === "tool.started") {
+        await finalizeAssistantSegment(false);
+      }
+
+      if (type === "approval.request") {
+        await finalizeAssistantSegment(false);
+        const [run] = await db.select().from(schema.runs).where(eq(schema.runs.id, runId));
+        if (run) {
+          await createHermesToolApproval({
+            orgId: run.orgId,
+            agentId,
+            runId,
+            hermesRunId,
+            event,
+          });
+        }
+        return;
+      }
+
+      const mapped = mapHermesEventToAudit(event, { streamedReply });
+      if (mapped) {
+        await logAudit({ runId, agentId, ...mapped });
+      }
+    },
+    { timeoutMs: HERMES_RUN_TIMEOUT_MS }
+  );
+
+  const [run] = await db.select().from(schema.runs).where(eq(schema.runs.id, runId));
+  if (!run || run.status !== "running") return;
+
+  if (result === "completed") {
+    await db
+      .update(schema.runs)
+      .set({ status: "completed", completedAt: new Date().toISOString() })
+      .where(eq(schema.runs.id, runId));
+    clearActiveRun(agentId, runId);
+    return;
+  }
+
+  if (result === "failed" || result === "cancelled") {
+    await db
+      .update(schema.runs)
+      .set({ status: "failed", completedAt: new Date().toISOString() })
+      .where(eq(schema.runs.id, runId));
+    clearActiveRun(agentId, runId);
+    return;
+  }
+
+  await logAudit({
+    runId,
+    agentId,
+    step: "run_failed",
+    message:
+      result === "timeout"
+        ? `Hermes run timed out after ${HERMES_RUN_TIMEOUT_MS / 1000}s`
+        : "Lost connection to Hermes event stream",
+    actor: "Hermes",
+  });
+  await db
+    .update(schema.runs)
+    .set({ status: "failed", completedAt: new Date().toISOString() })
+    .where(eq(schema.runs.id, runId));
+  clearActiveRun(agentId, runId);
+}
+
 export async function executeRun(runId: string, agentId: string, prompt: string) {
   const db = getDb();
   const [agent] = await db.select().from(schema.agents).where(eq(schema.agents.id, agentId));
@@ -34,9 +266,33 @@ export async function executeRun(runId: string, agentId: string, prompt: string)
     actor: agent.name,
   });
 
+  await logAudit({
+    runId,
+    agentId,
+    step: "user_message",
+    message: prompt,
+    actor: "You",
+  });
+
+  setActiveRun(agentId, runId);
+  await syncHermesGatewayMcpConfig(agentId);
+
   const hermes = await checkHermesHealth();
-  if (hermes.online) {
-    const hermesRunId = await startHermesRun(prompt, agent.name);
+  let localReason: string | null = null;
+
+  if (hermes.online && hermes.authenticated !== false) {
+    await ensureHermesProfile(agentId);
+    const profilePath = profileDirForAgent(agent);
+    const soulMd = await readSoul(profilePath);
+
+    const hermesRunId = await startHermesRun({
+      prompt,
+      soulMd,
+      agentId,
+      runId,
+      agentName: agent.name,
+    });
+
     if (hermesRunId) {
       await db.update(schema.runs).set({ hermesRunId }).where(eq(schema.runs.id, runId));
       await logAudit({
@@ -46,26 +302,35 @@ export async function executeRun(runId: string, agentId: string, prompt: string)
         message: `Task delegated to Hermes (run ${hermesRunId})`,
         actor: "Hermes",
       });
-      // Hermes will call MCP for purchases; local fallback completes run if no MCP call within timeout
-      setTimeout(async () => {
-        const [run] = await db.select().from(schema.runs).where(eq(schema.runs.id, runId));
-        if (run?.status === "running") {
-          await completeRunWithLocalLogic(runId, agentId, prompt, agent.category);
-        }
-      }, 8000);
+
+      void watchHermesRun(runId, agentId, agent.name, hermesRunId);
       return { mode: "hermes" as const, hermesRunId };
     }
+
+    localReason =
+      "Hermes rejected the run request — check HERMES_API_KEY matches API_SERVER_KEY in ~/.hermes/.env";
+  } else if (!hermes.online) {
+    localReason = "Hermes offline — running local task simulation";
+  } else if (hermes.authError === "missing_key") {
+    localReason =
+      "Hermes is online but HERMES_API_KEY is not set — add it to .env (must match API_SERVER_KEY in ~/.hermes/.env)";
+  } else if (hermes.authError === "invalid_key") {
+    localReason =
+      "Hermes API key rejected — set HERMES_API_KEY in .env to match API_SERVER_KEY in ~/.hermes/.env";
+  } else {
+    localReason = "Hermes unavailable — running local task simulation";
   }
 
   await logAudit({
     runId,
     agentId,
     step: "local_runner",
-    message: "Hermes offline — running local task simulation",
+    message: localReason,
     actor: "AgntPymt",
   });
 
   await completeRunWithLocalLogic(runId, agentId, prompt, agent.category);
+  clearActiveRun(agentId, runId);
   return { mode: "local" as const };
 }
 

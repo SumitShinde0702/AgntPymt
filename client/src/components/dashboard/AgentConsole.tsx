@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from "react";
-import { Link } from "react-router-dom";
+import { Link, useSearchParams } from "react-router-dom";
 import { Bot, Play, Plus } from "lucide-react";
 import { api, subscribeRunEvents, type Agent, type RunEvent } from "../../lib/api";
 import { RunChatFeed } from "./RunChatFeed";
@@ -11,6 +11,29 @@ const EXAMPLES = [
   "Pay the AWS invoice for this month",
 ];
 
+const SESSION_KEY = "agntpymt:activeRun";
+
+type StoredRun = {
+  runId: string;
+  agentId: string;
+  prompt: string;
+  events: RunEvent[];
+};
+
+function mergeEvent(prev: RunEvent[], event: RunEvent): RunEvent[] {
+  const streamId = event.payload?.streamId;
+  if (typeof streamId === "string" && event.step === "hermes_message") {
+    const idx = prev.findIndex((e) => e.payload?.streamId === streamId);
+    if (idx >= 0) {
+      const next = [...prev];
+      next[idx] = event;
+      return next;
+    }
+  }
+  if (prev.some((e) => e.createdAt === event.createdAt && e.step === event.step)) return prev;
+  return [...prev, event];
+}
+
 type Props = {
   agents: Agent[];
   onRunComplete?: () => void;
@@ -18,14 +41,18 @@ type Props = {
 };
 
 export function AgentConsole({ agents, onRunComplete, onNewAgent }: Props) {
+  const [searchParams, setSearchParams] = useSearchParams();
   const hasAgents = agents.length > 0;
   const [agentId, setAgentId] = useState(agents[0]?.id ?? "");
   const [prompt, setPrompt] = useState("");
   const [running, setRunning] = useState(false);
   const [events, setEvents] = useState<RunEvent[]>([]);
+  const [runId, setRunId] = useState<string | null>(null);
   const [runError, setRunError] = useState<string | null>(null);
   const feedRef = useRef<HTMLDivElement>(null);
   const abortRef = useRef<AbortController | null>(null);
+  const timeoutRef = useRef<number | null>(null);
+  const restoredRef = useRef(false);
 
   useEffect(() => {
     if (agents.length && !agentId) setAgentId(agents[0].id);
@@ -36,76 +63,114 @@ export function AgentConsole({ agents, onRunComplete, onNewAgent }: Props) {
   }, [events]);
 
   useEffect(() => {
+    if (!runId || events.length === 0) return;
+    const stored: StoredRun = { runId, agentId, prompt, events };
+    sessionStorage.setItem(SESSION_KEY, JSON.stringify(stored));
+  }, [runId, agentId, prompt, events]);
+
+  useEffect(() => {
     return () => abortRef.current?.abort();
   }, []);
 
-  async function handleRun() {
-    if (!agentId || !prompt.trim()) return;
-    abortRef.current?.abort();
-    const abort = new AbortController();
-    abortRef.current = abort;
+  function clearRunTimeout() {
+    if (timeoutRef.current != null) {
+      window.clearTimeout(timeoutRef.current);
+      timeoutRef.current = null;
+    }
+  }
 
-    setRunning(true);
-    setEvents([]);
-    setRunError(null);
+  function armTimeout(ms: number, onTimeout: () => void) {
+    clearRunTimeout();
+    timeoutRef.current = window.setTimeout(onTimeout, ms);
+  }
 
-    let received = false;
+  function handleRunEvent(
+    event: RunEvent,
+    ctx: {
+      received: { value: boolean };
+      finish: () => void;
+    }
+  ) {
+    ctx.received.value = true;
+    setEvents((prev) => mergeEvent(prev, event));
+
+    if (event.step === "hermes_approval") {
+      armTimeout(600_000, () => {
+        setRunError("Waiting for approval timed out — approve or deny in the chat.");
+        ctx.finish();
+      });
+      return;
+    }
+
+    if (event.step === "hermes_approval_granted") {
+      armTimeout(180_000, () => {
+        setRunError("Run timed out after approval — check server logs.");
+        ctx.finish();
+      });
+      return;
+    }
+
+    if (
+      event.step === "run_completed" ||
+      event.step === "payment_pending" ||
+      event.step === "run_failed" ||
+      event.step === "payment_failed" ||
+      event.step === "hermes_approval_denied"
+    ) {
+      ctx.finish();
+    }
+  }
+
+  async function connectToRun(
+    id: string,
+    opts: { received?: { value: boolean }; onFinish?: () => void; awaitingApproval?: boolean } = {}
+  ) {
+    const received = opts.received ?? { value: false };
     let done = false;
-    let timeout: number;
 
     const finish = () => {
       if (done) return;
       done = true;
-      window.clearTimeout(timeout);
-      abort.abort();
+      clearRunTimeout();
+      abortRef.current?.abort();
       setRunning(false);
       onRunComplete?.();
+      opts.onFinish?.();
     };
 
-    timeout = window.setTimeout(() => {
+    abortRef.current?.abort();
+    const abort = new AbortController();
+    abortRef.current = abort;
+
+    const defaultMs = opts.awaitingApproval ? 600_000 : 90_000;
+    armTimeout(defaultMs, () => {
       if (done) return;
-      setRunError("Run timed out — check server logs and SIMULATE_PAYMENTS setting.");
+      setRunError(
+        opts.awaitingApproval
+          ? "Waiting for approval timed out — approve or deny in the chat."
+          : "Run timed out — check server logs and SIMULATE_PAYMENTS setting."
+      );
       finish();
-    }, 90_000);
+    });
 
     try {
-      const { runId } = await api<{ runId: string }>("/api/agent/run", {
-        method: "POST",
-        body: JSON.stringify({ agentId, prompt }),
-        signal: abort.signal,
-      });
-
       await subscribeRunEvents(
-        runId,
-        (event) => {
-          received = true;
-          setEvents((prev) => {
-            if (prev.some((e) => e.createdAt === event.createdAt && e.step === event.step)) return prev;
-            return [...prev, event];
-          });
-          if (
-            event.step === "run_completed" ||
-            event.step === "payment_pending" ||
-            event.step === "run_failed" ||
-            event.step === "payment_failed"
-          ) {
-            finish();
-          }
-        },
+        id,
+        (event) => handleRunEvent(event, { received, finish }),
         abort.signal
       );
 
-      if (!received && !done) {
+      if (!received.value && !done) {
         setRunError("Run ended without events — check server logs and wallet funding.");
       }
       finish();
     } catch (err) {
       if (done || abort.signal.aborted) return;
-      window.clearTimeout(timeout);
+      clearRunTimeout();
       setRunning(false);
-      const message = err instanceof Error ? err.message : "Failed to start run";
+      const message = err instanceof Error ? err.message : "Failed to connect to run";
       setRunError(
-        received
+        received.value
           ? message
           : message.includes("invalid response")
             ? message
@@ -114,10 +179,135 @@ export function AgentConsole({ agents, onRunComplete, onNewAgent }: Props) {
     }
   }
 
+  async function restoreRun(targetRunId: string) {
+    try {
+      const history = await api<{
+        runId: string;
+        status: string;
+        agentId: string;
+        prompt: string;
+        events: RunEvent[];
+      }>(`/api/agent/run/${targetRunId}/history`);
+
+      setRunId(history.runId);
+      setAgentId(history.agentId);
+      setPrompt(history.prompt);
+      setEvents(history.events);
+      setRunError(null);
+
+      const active = history.status === "running" || history.status === "awaiting_approval";
+      if (active) {
+        setRunning(true);
+        const awaitingApproval =
+          history.status === "awaiting_approval" &&
+          history.events.some((e) => e.step === "hermes_approval");
+        void connectToRun(history.runId, { awaitingApproval });
+      }
+    } catch {
+      sessionStorage.removeItem(SESSION_KEY);
+    }
+  }
+
+  useEffect(() => {
+    if (restoredRef.current || !hasAgents) return;
+    restoredRef.current = true;
+
+    const urlRun = searchParams.get("run");
+    if (urlRun) {
+      void restoreRun(urlRun);
+      searchParams.delete("run");
+      setSearchParams(searchParams, { replace: true });
+      return;
+    }
+
+    const raw = sessionStorage.getItem(SESSION_KEY);
+    if (!raw) return;
+    try {
+      const stored = JSON.parse(raw) as StoredRun;
+      if (stored.runId) void restoreRun(stored.runId);
+    } catch {
+      sessionStorage.removeItem(SESSION_KEY);
+    }
+  }, [hasAgents, searchParams, setSearchParams]);
+
+  async function handleRun() {
+    if (!agentId || !prompt.trim()) return;
+
+    setRunning(true);
+    setEvents([]);
+    setRunError(null);
+    setRunId(null);
+    sessionStorage.removeItem(SESSION_KEY);
+
+    const received = { value: false };
+    let done = false;
+
+    const finish = () => {
+      if (done) return;
+      done = true;
+      clearRunTimeout();
+      abortRef.current?.abort();
+      setRunning(false);
+      onRunComplete?.();
+    };
+
+    abortRef.current?.abort();
+    const abort = new AbortController();
+    abortRef.current = abort;
+
+    armTimeout(90_000, () => {
+      if (done) return;
+      setRunError("Run timed out — check server logs and SIMULATE_PAYMENTS setting.");
+      finish();
+    });
+
+    try {
+      const { runId: newRunId } = await api<{ runId: string }>("/api/agent/run", {
+        method: "POST",
+        body: JSON.stringify({ agentId, prompt }),
+        signal: abort.signal,
+      });
+
+      setRunId(newRunId);
+
+      await subscribeRunEvents(
+        newRunId,
+        (event) => handleRunEvent(event, { received, finish }),
+        abort.signal
+      );
+
+      if (!received.value && !done) {
+        setRunError("Run ended without events — check server logs and wallet funding.");
+      }
+      finish();
+    } catch (err) {
+      if (done || abort.signal.aborted) return;
+      clearRunTimeout();
+      setRunning(false);
+      const message = err instanceof Error ? err.message : "Failed to start run";
+      setRunError(
+        received.value
+          ? message
+          : message.includes("invalid response")
+            ? message
+            : `Lost connection to run stream — ${message}`
+      );
+    }
+  }
+
+  async function handleHermesApproval(approvalId: string, choice: "approve" | "deny") {
+    const path =
+      choice === "approve"
+        ? `/api/approvals/${approvalId}/approve`
+        : `/api/approvals/${approvalId}/deny`;
+    await api(path, { method: "POST" });
+    onRunComplete?.();
+  }
+
   const agent = agents.find((a) => a.id === agentId);
 
   return (
-    <div className="rounded-2xl border border-slate-200 bg-white shadow-sm">
+    <div id="agent-console" className="rounded-2xl border border-slate-200 bg-white shadow-sm">
       <div className="border-b border-slate-200 p-5">
         <h2 className="text-lg font-semibold text-slate-900">Agent Console</h2>
         <p className="text-sm text-slate-500">
@@ -225,7 +415,11 @@ export function AgentConsole({ agents, onRunComplete, onNewAgent }: Props) {
       )}
 
       <div ref={feedRef} className="h-80 overflow-y-auto bg-gradient-to-b from-slate-50 to-white px-3">
-        <RunChatFeed events={events} agentName={agent?.name} />
+        <RunChatFeed
+          events={events}
+          agentName={agent?.name}
+          onHermesApproval={handleHermesApproval}
+        />
       </div>
     </div>
   );

@@ -33,6 +33,7 @@ export function AgentsTable({ agents, onNewAgent }: Props) {
               <th className="px-5 py-3 font-medium">Agent</th>
               <th className="px-5 py-3 font-medium">Wallet</th>
               <th className="px-5 py-3 font-medium">Balance</th>
+              <th className="px-5 py-3 font-medium">Hermes</th>
               <th className="px-5 py-3 font-medium">Status</th>
               <th className="px-5 py-3 font-medium"></th>
             </tr>
@@ -40,7 +41,7 @@ export function AgentsTable({ agents, onNewAgent }: Props) {
           <tbody>
             {agents.length === 0 ? (
               <tr>
-                <td colSpan={5} className="px-5 py-10 text-center text-sm text-slate-500">
+                <td colSpan={6} className="px-5 py-10 text-center text-sm text-slate-500">
                   No agents yet.{" "}
                   {onNewAgent && (
                     <button
@@ -73,6 +74,20 @@ export function AgentsTable({ agents, onNewAgent }: Props) {
                     {a.walletAddress ? `${a.walletAddress.slice(0, 6)}…${a.walletAddress.slice(-4)}` : "—"}
                   </td>
                   <td className="px-5 py-4 font-medium">${a.balanceUsd.toFixed(2)} USDC</td>
+                  <td className="px-5 py-4">
+                    {a.hermesProvisioned ? (
+                      <div className="flex flex-wrap gap-1">
+                        <span className="rounded-full bg-violet-50 px-2 py-0.5 text-[10px] font-medium text-violet-700">
+                          {a.hermesSkillCount ?? 0} skills
+                        </span>
+                        <span className="rounded-full bg-blue-50 px-2 py-0.5 text-[10px] font-medium text-blue-700">
+                          {a.hermesMcpCount ?? 0} MCP
+                        </span>
+                      </div>
+                    ) : (
+                      <span className="text-xs text-slate-400">—</span>
+                    )}
+                  </td>
                   <td className="px-5 py-4">
                     <span className="rounded-full bg-emerald-50 px-2.5 py-1 text-xs font-medium capitalize text-emerald-700">
                       {a.status}

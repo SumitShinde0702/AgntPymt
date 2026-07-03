@@ -13,6 +13,19 @@ import {
   setTreasuryWallet,
 } from "../services/agent-wallet.js";
 import { suggestAgentProfile } from "../services/agent-profile-ai.js";
+import {
+  createSkill,
+  deleteMcpServer,
+  deleteSkill,
+  ensureAllHermesProfiles,
+  ensureHermesProfile,
+  getHermesProfileStatus,
+  profileDirForAgent,
+  provisionProfile,
+  updateSkill,
+  upsertMcpServer,
+  writeSoul,
+} from "../services/hermes-profile.js";
 import { authEnabled, getOrgId } from "../middleware/auth.js";
 import { getOrCreateTenant } from "../services/tenant.js";
 import { getAuth } from "@clerk/express";
@@ -40,12 +53,23 @@ apiRouter.get("/me", async (req, res) => {
   });
 });
 
-apiRouter.get("/health", async (_req, res) => {
+apiRouter.get("/health", async (req, res) => {
   const hermes = await checkHermesHealth();
+  const orgId = getOrgId(req);
+  const db = getDb();
+  const agents = await db.select().from(schema.agents).where(eq(schema.agents.orgId, orgId));
+  const hermesProfilesProvisioned = agents.filter((a) => a.hermesProvisioned).length;
   res.json({
     status: "ok",
-    daemon: hermes.online ? "running" : "degraded",
+    daemon:
+      hermes.online && hermes.authenticated !== false
+        ? "running"
+        : hermes.online
+          ? "auth_error"
+          : "degraded",
     hermes,
+    hermesProfilesProvisioned,
+    hermesProfilesTotal: agents.length,
     simulatePayments: env.simulatePayments,
     demoTransactionFeeUsd: env.demoTransactionFeeUsd,
     aiNegotiation: Boolean(env.openaiApiKey),
@@ -84,6 +108,7 @@ apiRouter.patch("/treasury", async (req, res) => {
 apiRouter.get("/dashboard", async (req, res) => {
   const orgId = getOrgId(req);
   await ensureAllAgentWallets(orgId);
+  await ensureAllHermesProfiles(orgId);
   const db = getDb();
   const agents = await db.select().from(schema.agents).where(eq(schema.agents.orgId, orgId));
   const approvals = await db
@@ -100,6 +125,7 @@ apiRouter.get("/dashboard", async (req, res) => {
   const totalBalance = agents.reduce((sum, a) => sum + a.balanceUsd, 0);
   const activeAgents = agents.filter((a) => a.status === "active").length;
   const spend30Days = transactions.reduce((sum, t) => sum + t.amountUsd, 0);
+  const hermesProfilesProvisioned = agents.filter((a) => a.hermesProvisioned).length;
 
   res.json({
     kpis: {
@@ -107,8 +133,26 @@ apiRouter.get("/dashboard", async (req, res) => {
       activeAgents: `${activeAgents} of ${agents.length}`,
       pendingApprovals: approvals.length,
       spend30DaysUsd: spend30Days,
+      hermesProfilesProvisioned,
     },
-    agents: agents.map(stripAgentSecrets),
+    agents: await Promise.all(
+      agents.map(async (a) => {
+        const base = stripAgentSecrets(a);
+        if (!a.hermesProvisioned) {
+          return { ...base, hermesSkillCount: 0, hermesMcpCount: 0 };
+        }
+        try {
+          const status = await getHermesProfileStatus(a);
+          return {
+            ...base,
+            hermesSkillCount: status.capabilities.skills.length,
+            hermesMcpCount: status.capabilities.mcpServers.length,
+          };
+        } catch {
+          return { ...base, hermesSkillCount: 0, hermesMcpCount: 0 };
+        }
+      })
+    ),
     pendingApprovals: approvals,
     recentTransactions: transactions,
     activeWallets: agents.filter((a) => a.walletProvisioned && a.walletAddress).length,
@@ -244,6 +288,15 @@ apiRouter.post("/agents", async (req, res) => {
   });
   await provisionAgentWallet(id);
   const [created] = await db.select().from(schema.agents).where(eq(schema.agents.id, id));
+  if (created) {
+    const [policy] = await db
+      .select()
+      .from(schema.agentPolicies)
+      .where(eq(schema.agentPolicies.agentId, id));
+    await provisionProfile(created, policy);
+    const [withHermes] = await db.select().from(schema.agents).where(eq(schema.agents.id, id));
+    return res.status(201).json(withHermes ? stripAgentSecrets(withHermes) : stripAgentSecrets(created));
+  }
   res.status(201).json(created ? stripAgentSecrets(created) : row);
 });
 
@@ -268,6 +321,149 @@ apiRouter.patch("/agents/:id", async (req, res) => {
   await db.update(schema.agents).set(updates).where(eq(schema.agents.id, req.params.id));
   const [updated] = await db.select().from(schema.agents).where(eq(schema.agents.id, req.params.id));
   res.json(updated ? stripAgentSecrets(updated) : null);
+});
+
+async function loadOrgAgent(agentId: string, orgId: string) {
+  const db = getDb();
+  const [agent] = await db.select().from(schema.agents).where(eq(schema.agents.id, agentId));
+  if (!agent || agent.orgId !== orgId) return null;
+  return agent;
+}
+
+apiRouter.get("/agents/:id/hermes", async (req, res) => {
+  const orgId = getOrgId(req);
+  const agent = await loadOrgAgent(req.params.id, orgId);
+  if (!agent) return res.status(404).json({ error: "Not found" });
+  const status = await getHermesProfileStatus(agent);
+  res.json(status);
+});
+
+const soulSchema = z.object({ soul: z.string() });
+
+apiRouter.put("/agents/:id/hermes/soul", async (req, res) => {
+  const parsed = soulSchema.safeParse(req.body);
+  if (!parsed.success) return res.status(400).json(parsed.error.flatten());
+
+  const orgId = getOrgId(req);
+  const agent = await loadOrgAgent(req.params.id, orgId);
+  if (!agent) return res.status(404).json({ error: "Not found" });
+
+  await ensureHermesProfile(agent.id);
+  const profilePath = profileDirForAgent(agent);
+  await writeSoul(profilePath, parsed.data.soul);
+  res.json({ ok: true, soul: parsed.data.soul });
+});
+
+apiRouter.post("/agents/:id/hermes/provision", async (req, res) => {
+  const orgId = getOrgId(req);
+  const agent = await loadOrgAgent(req.params.id, orgId);
+  if (!agent) return res.status(404).json({ error: "Not found" });
+
+  const db = getDb();
+  const [policy] = await db
+    .select()
+    .from(schema.agentPolicies)
+    .where(eq(schema.agentPolicies.agentId, agent.id));
+  const status = await provisionProfile(agent, policy);
+  res.json(status);
+});
+
+const skillBodySchema = z.object({
+  id: z.string().min(1).optional(),
+  name: z.string().min(1),
+  description: z.string().default(""),
+  body: z.string().default(""),
+});
+
+apiRouter.post("/agents/:id/hermes/skills", async (req, res) => {
+  const parsed = skillBodySchema.safeParse(req.body);
+  if (!parsed.success) return res.status(400).json(parsed.error.flatten());
+
+  const orgId = getOrgId(req);
+  const agent = await loadOrgAgent(req.params.id, orgId);
+  if (!agent) return res.status(404).json({ error: "Not found" });
+
+  await ensureHermesProfile(agent.id);
+  const profilePath = profileDirForAgent(agent);
+  const id = parsed.data.id ?? parsed.data.name;
+  const skill = await createSkill(
+    profilePath,
+    id,
+    parsed.data.name,
+    parsed.data.description,
+    parsed.data.body
+  );
+  res.status(201).json(skill);
+});
+
+apiRouter.put("/agents/:id/hermes/skills/:skillId", async (req, res) => {
+  const parsed = skillBodySchema.safeParse(req.body);
+  if (!parsed.success) return res.status(400).json(parsed.error.flatten());
+
+  const orgId = getOrgId(req);
+  const agent = await loadOrgAgent(req.params.id, orgId);
+  if (!agent) return res.status(404).json({ error: "Not found" });
+
+  await ensureHermesProfile(agent.id);
+  const profilePath = profileDirForAgent(agent);
+  const skill = await updateSkill(
+    profilePath,
+    req.params.skillId,
+    parsed.data.name,
+    parsed.data.description,
+    parsed.data.body
+  );
+  res.json(skill);
+});
+
+apiRouter.delete("/agents/:id/hermes/skills/:skillId", async (req, res) => {
+  const orgId = getOrgId(req);
+  const agent = await loadOrgAgent(req.params.id, orgId);
+  if (!agent) return res.status(404).json({ error: "Not found" });
+
+  await ensureHermesProfile(agent.id);
+  const profilePath = profileDirForAgent(agent);
+  await deleteSkill(profilePath, req.params.skillId);
+  res.json({ ok: true });
+});
+
+const mcpServerSchema = z.object({
+  name: z.string().min(1),
+  command: z.string().optional(),
+  args: z.array(z.string()).optional(),
+  url: z.string().optional(),
+  env: z.record(z.string()).optional(),
+  headers: z.record(z.string()).optional(),
+  enabled: z.boolean().optional(),
+});
+
+apiRouter.post("/agents/:id/hermes/mcp", async (req, res) => {
+  const parsed = mcpServerSchema.safeParse(req.body);
+  if (!parsed.success) return res.status(400).json(parsed.error.flatten());
+
+  const orgId = getOrgId(req);
+  const agent = await loadOrgAgent(req.params.id, orgId);
+  if (!agent) return res.status(404).json({ error: "Not found" });
+
+  await ensureHermesProfile(agent.id);
+  const profilePath = profileDirForAgent(agent);
+  const servers = await upsertMcpServer(profilePath, parsed.data);
+  res.json({ mcpServers: servers });
+});
+
+apiRouter.delete("/agents/:id/hermes/mcp/:name", async (req, res) => {
+  const orgId = getOrgId(req);
+  const agent = await loadOrgAgent(req.params.id, orgId);
+  if (!agent) return res.status(404).json({ error: "Not found" });
+
+  await ensureHermesProfile(agent.id);
+  const profilePath = profileDirForAgent(agent);
+  try {
+    const servers = await deleteMcpServer(profilePath, req.params.name);
+    res.json({ mcpServers: servers });
+  } catch (err) {
+    res.status(400).json({ error: err instanceof Error ? err.message : "Failed" });
+  }
 });
 
 apiRouter.get("/vendors", async (_req, res) => {
@@ -297,6 +493,12 @@ apiRouter.post("/approvals/:id/approve", async (req, res) => {
     if (!approval || approval.orgId !== orgId) {
       return res.status(404).json({ error: "Not found" });
     }
+    if (approval.kind === "hermes_action") {
+      const { resolveHermesApproval } = await import("../services/hermes-approvals.js");
+      const choice = String(req.body?.choice ?? "once") as "once" | "deny";
+      const result = await resolveHermesApproval(req.params.id, choice);
+      return res.json(result);
+    }
     const result = await approveAndSettle(req.params.id);
     res.json(result);
   } catch (err) {
@@ -313,6 +515,15 @@ apiRouter.post("/approvals/:id/deny", async (req, res) => {
     .where(eq(schema.approvals.id, req.params.id));
   if (!approval || approval.orgId !== orgId) {
     return res.status(404).json({ error: "Not found" });
+  }
+  if (approval.kind === "hermes_action") {
+    try {
+      const { resolveHermesApproval } = await import("../services/hermes-approvals.js");
+      const result = await resolveHermesApproval(req.params.id, "deny");
+      return res.json(result);
+    } catch (err) {
+      return res.status(400).json({ error: err instanceof Error ? err.message : "Failed" });
+    }
   }
   await denyApproval(req.params.id);
   res.json({ ok: true });
@@ -391,6 +602,34 @@ apiRouter.post("/agent/run", async (req, res) => {
   res.status(202).json({ runId });
 });
 
+apiRouter.get("/agent/run/:runId/history", async (req, res) => {
+  const db = getDb();
+  const { runId } = req.params;
+  const [run] = await db.select().from(schema.runs).where(eq(schema.runs.id, runId));
+  if (!run) return res.status(404).json({ error: "Run not found" });
+
+  const logs = await db
+    .select()
+    .from(schema.auditLogs)
+    .where(eq(schema.auditLogs.runId, runId))
+    .orderBy(schema.auditLogs.createdAt);
+
+  res.json({
+    runId,
+    status: run.status,
+    agentId: run.agentId,
+    prompt: run.prompt,
+    events: logs.map((log) => ({
+      runId: log.runId,
+      step: log.step,
+      message: log.message,
+      actor: log.actor ?? undefined,
+      payload: log.payload ? JSON.parse(log.payload) : undefined,
+      createdAt: log.createdAt,
+    })),
+  });
+});
+
 apiRouter.get("/agent/run/:runId/events", (req, res) => {
   const { runId } = req.params;
 
@@ -406,9 +645,33 @@ apiRouter.get("/agent/run/:runId/events", (req, res) => {
 
   const unsubscribe = runEventBus.subscribe(runId, send);
 
+  const seenLogIds = new Set<string>();
+
   const heartbeat = setInterval(() => {
     res.write(": ping\n\n");
   }, 15_000);
+
+  const pollAudit = setInterval(() => {
+    void getDb()
+      .select()
+      .from(schema.auditLogs)
+      .where(eq(schema.auditLogs.runId, runId))
+      .orderBy(schema.auditLogs.createdAt)
+      .then((logs) => {
+        for (const log of logs) {
+          if (seenLogIds.has(log.id)) continue;
+          seenLogIds.add(log.id);
+          send({
+            runId: log.runId,
+            step: log.step,
+            message: log.message,
+            actor: log.actor ?? undefined,
+            payload: log.payload ? JSON.parse(log.payload) : undefined,
+            createdAt: log.createdAt,
+          });
+        }
+      });
+  }, 1000);
 
   void getDb()
     .select()
@@ -417,11 +680,12 @@ apiRouter.get("/agent/run/:runId/events", (req, res) => {
     .orderBy(schema.auditLogs.createdAt)
     .then((existing) => {
       for (const log of existing) {
+        seenLogIds.add(log.id);
         send({
           runId: log.runId,
           step: log.step,
           message: log.message,
-          actor: log.actor,
+          actor: log.actor ?? undefined,
           payload: log.payload ? JSON.parse(log.payload) : undefined,
           createdAt: log.createdAt,
         });
@@ -430,6 +694,7 @@ apiRouter.get("/agent/run/:runId/events", (req, res) => {
 
   req.on("close", () => {
     clearInterval(heartbeat);
+    clearInterval(pollAudit);
     unsubscribe();
   });
 });
@@ -449,17 +714,23 @@ apiRouter.post("/agent/execute", async (req, res) => {
 
   const { runPurchaseFlow } = await import("../simulation/purchase-flow.js");
   const runId = parsed.data.runId ?? `mcp_${Date.now()}`;
-  const result = await runPurchaseFlow({
-    runId,
-    agentId: parsed.data.agentId,
-    purchaseIntent: parsed.data.purchaseIntent,
-    category: parsed.data.category,
-    resourceId: parsed.data.resourceId,
-    maxBudget: parsed.data.maxBudget,
-    source: "mcp",
-  });
 
-  res.json(result);
+  try {
+    const result = await runPurchaseFlow({
+      runId,
+      agentId: parsed.data.agentId,
+      purchaseIntent: parsed.data.purchaseIntent,
+      category: parsed.data.category,
+      resourceId: parsed.data.resourceId,
+      maxBudget: parsed.data.maxBudget,
+      source: "mcp",
+    });
+
+    res.json(result);
+  } catch (err) {
+    const message = err instanceof Error ? err.message : "Purchase failed";
+    res.status(200).json({ status: "error", error: message, runId });
+  }
 });
 
 apiRouter.post("/agents/:id/topup", async (req, res) => {
