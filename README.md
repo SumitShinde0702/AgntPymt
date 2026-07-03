@@ -11,12 +11,15 @@ cp .env.example .env
 # 2. Install dependencies
 npm install
 
-# 3. Build db package, migrate & seed
+# 3. Start PostgreSQL (Docker)
+npm run db:up
+
+# 4. Build db package, migrate & seed
 npm run build -w db
 npm run db:migrate
 npm run db:seed
 
-# 4. Start dev (client :5173 + server :3001)
+# 5. Start dev (client :5173 + server :3001)
 npm run dev
 ```
 
@@ -56,6 +59,10 @@ One `hermes gateway` process uses **one** `HERMES_HOME` at startup. All agent pr
 For full per-agent runtime isolation later: one gateway per org, subprocess per run with `HERMES_HOME=profile_path`, or Hermes per-run profile APIs.
 
 See `docs/hermes-mcp.example.json` for a manual MCP reference (AgntPymt auto-writes this into each agent profile).
+
+## GCP deploy
+
+See [`deploy/gcp/README.md`](deploy/gcp/README.md) — Cloud Run + **Cloud SQL PostgreSQL** (Singapore `asia-southeast1`) + GCS profiles + Hermes VM.
 
 ## Demo flows
 

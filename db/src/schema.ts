@@ -1,20 +1,25 @@
-import { sqliteTable, text, integer, real } from "drizzle-orm/sqlite-core";
+import {
+  pgTable,
+  text,
+  boolean,
+  doublePrecision,
+} from "drizzle-orm/pg-core";
 
-export const organizations = sqliteTable("organizations", {
+export const organizations = pgTable("organizations", {
   id: text("id").primaryKey(),
   name: text("name").notNull(),
   treasuryWalletAddress: text("treasury_wallet_address"),
   createdAt: text("created_at").notNull(),
 });
 
-export const users = sqliteTable("users", {
+export const users = pgTable("users", {
   id: text("id").primaryKey(),
   orgId: text("org_id").notNull(),
   email: text("email"),
   createdAt: text("created_at").notNull(),
 });
 
-export const agents = sqliteTable("agents", {
+export const agents = pgTable("agents", {
   id: text("id").primaryKey(),
   orgId: text("org_id").notNull(),
   name: text("name").notNull(),
@@ -24,32 +29,32 @@ export const agents = sqliteTable("agents", {
   iconColor: text("icon_color").notNull().default("violet"),
   walletAddress: text("wallet_address"),
   walletPrivateKey: text("wallet_private_key"),
-  walletProvisioned: integer("wallet_provisioned", { mode: "boolean" }).notNull().default(false),
-  balanceUsd: real("balance_usd").notNull().default(0),
+  walletProvisioned: boolean("wallet_provisioned").notNull().default(false),
+  balanceUsd: doublePrecision("balance_usd").notNull().default(0),
   hermesProfileName: text("hermes_profile_name"),
-  hermesProvisioned: integer("hermes_provisioned", { mode: "boolean" }).notNull().default(false),
+  hermesProvisioned: boolean("hermes_provisioned").notNull().default(false),
   createdAt: text("created_at").notNull(),
 });
 
-export const agentPolicies = sqliteTable("agent_policies", {
+export const agentPolicies = pgTable("agent_policies", {
   agentId: text("agent_id").primaryKey(),
-  autoApproveLimitUsd: real("auto_approve_limit_usd").notNull().default(50),
-  requireWalletConfirmation: integer("require_wallet_confirmation", { mode: "boolean" }).notNull().default(false),
-  autoSettlementEnabled: integer("auto_settlement_enabled", { mode: "boolean" }).notNull().default(true),
+  autoApproveLimitUsd: doublePrecision("auto_approve_limit_usd").notNull().default(50),
+  requireWalletConfirmation: boolean("require_wallet_confirmation").notNull().default(false),
+  autoSettlementEnabled: boolean("auto_settlement_enabled").notNull().default(true),
   negotiationRules: text("negotiation_rules"),
 });
 
-export const vendors = sqliteTable("vendors", {
+export const vendors = pgTable("vendors", {
   id: text("id").primaryKey(),
   name: text("name").notNull(),
   category: text("category").notNull(),
   description: text("description"),
-  listPriceUsd: real("list_price_usd").notNull(),
-  counterPriceUsd: real("counter_price_usd"),
+  listPriceUsd: doublePrecision("list_price_usd").notNull(),
+  counterPriceUsd: doublePrecision("counter_price_usd"),
   negotiationStyle: text("negotiation_style").notNull().default("instant"),
 });
 
-export const runs = sqliteTable("runs", {
+export const runs = pgTable("runs", {
   id: text("id").primaryKey(),
   orgId: text("org_id").notNull(),
   agentId: text("agent_id").notNull(),
@@ -60,26 +65,26 @@ export const runs = sqliteTable("runs", {
   completedAt: text("completed_at"),
 });
 
-export const sellerSessions = sqliteTable("seller_sessions", {
+export const sellerSessions = pgTable("seller_sessions", {
   id: text("id").primaryKey(),
   runId: text("run_id").notNull(),
   vendorId: text("vendor_id").notNull(),
   purchaseIntent: text("purchase_intent").notNull(),
-  quotedPriceUsd: real("quoted_price_usd"),
-  finalPriceUsd: real("final_price_usd"),
+  quotedPriceUsd: doublePrecision("quoted_price_usd"),
+  finalPriceUsd: doublePrecision("final_price_usd"),
   status: text("status").notNull().default("negotiating"),
   fulfillmentPayload: text("fulfillment_payload"),
   createdAt: text("created_at").notNull(),
 });
 
-export const approvals = sqliteTable("approvals", {
+export const approvals = pgTable("approvals", {
   id: text("id").primaryKey(),
   orgId: text("org_id").notNull(),
   agentId: text("agent_id").notNull(),
   runId: text("run_id"),
   sellerSessionId: text("seller_session_id"),
   vendorName: text("vendor_name").notNull(),
-  amountUsd: real("amount_usd").notNull(),
+  amountUsd: doublePrecision("amount_usd").notNull(),
   reason: text("reason").notNull(),
   status: text("status").notNull().default("pending_approval"),
   kind: text("kind").notNull().default("payment"),
@@ -89,7 +94,7 @@ export const approvals = sqliteTable("approvals", {
   resolvedAt: text("resolved_at"),
 });
 
-export const transactions = sqliteTable("transactions", {
+export const transactions = pgTable("transactions", {
   id: text("id").primaryKey(),
   orgId: text("org_id").notNull(),
   agentId: text("agent_id").notNull(),
@@ -97,13 +102,13 @@ export const transactions = sqliteTable("transactions", {
   approvalId: text("approval_id"),
   vendorName: text("vendor_name").notNull(),
   description: text("description").notNull(),
-  amountUsd: real("amount_usd").notNull(),
+  amountUsd: doublePrecision("amount_usd").notNull(),
   status: text("status").notNull(),
   txHash: text("tx_hash"),
   createdAt: text("created_at").notNull(),
 });
 
-export const auditLogs = sqliteTable("audit_logs", {
+export const auditLogs = pgTable("audit_logs", {
   id: text("id").primaryKey(),
   runId: text("run_id").notNull(),
   agentId: text("agent_id").notNull(),

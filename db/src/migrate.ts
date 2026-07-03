@@ -1,9 +1,11 @@
-import { createLibsqlClient, ensureLocalDbDir, resolveDbUrl } from "./connection.js";
+import postgres from "postgres";
+import { resolveDatabaseUrl } from "./connection.js";
 
 const migrationSql = `
 CREATE TABLE IF NOT EXISTS organizations (
   id TEXT PRIMARY KEY,
   name TEXT NOT NULL,
+  treasury_wallet_address TEXT,
   created_at TEXT NOT NULL
 );
 
@@ -23,15 +25,20 @@ CREATE TABLE IF NOT EXISTS agents (
   status TEXT NOT NULL DEFAULT 'active',
   icon_color TEXT NOT NULL DEFAULT 'violet',
   wallet_address TEXT,
-  balance_usd REAL NOT NULL DEFAULT 0,
+  wallet_private_key TEXT,
+  wallet_provisioned BOOLEAN NOT NULL DEFAULT FALSE,
+  balance_usd DOUBLE PRECISION NOT NULL DEFAULT 0,
+  hermes_profile_name TEXT,
+  hermes_provisioned BOOLEAN NOT NULL DEFAULT FALSE,
   created_at TEXT NOT NULL
 );
 
 CREATE TABLE IF NOT EXISTS agent_policies (
   agent_id TEXT PRIMARY KEY,
-  auto_approve_limit_usd REAL NOT NULL DEFAULT 50,
-  require_wallet_confirmation INTEGER NOT NULL DEFAULT 0,
-  auto_settlement_enabled INTEGER NOT NULL DEFAULT 1
+  auto_approve_limit_usd DOUBLE PRECISION NOT NULL DEFAULT 50,
+  require_wallet_confirmation BOOLEAN NOT NULL DEFAULT FALSE,
+  auto_settlement_enabled BOOLEAN NOT NULL DEFAULT TRUE,
+  negotiation_rules TEXT
 );
 
 CREATE TABLE IF NOT EXISTS vendors (
@@ -39,8 +46,8 @@ CREATE TABLE IF NOT EXISTS vendors (
   name TEXT NOT NULL,
   category TEXT NOT NULL,
   description TEXT,
-  list_price_usd REAL NOT NULL,
-  counter_price_usd REAL,
+  list_price_usd DOUBLE PRECISION NOT NULL,
+  counter_price_usd DOUBLE PRECISION,
   negotiation_style TEXT NOT NULL DEFAULT 'instant'
 );
 
@@ -60,8 +67,8 @@ CREATE TABLE IF NOT EXISTS seller_sessions (
   run_id TEXT NOT NULL,
   vendor_id TEXT NOT NULL,
   purchase_intent TEXT NOT NULL,
-  quoted_price_usd REAL,
-  final_price_usd REAL,
+  quoted_price_usd DOUBLE PRECISION,
+  final_price_usd DOUBLE PRECISION,
   status TEXT NOT NULL DEFAULT 'negotiating',
   fulfillment_payload TEXT,
   created_at TEXT NOT NULL
@@ -74,9 +81,12 @@ CREATE TABLE IF NOT EXISTS approvals (
   run_id TEXT,
   seller_session_id TEXT,
   vendor_name TEXT NOT NULL,
-  amount_usd REAL NOT NULL,
+  amount_usd DOUBLE PRECISION NOT NULL,
   reason TEXT NOT NULL,
   status TEXT NOT NULL DEFAULT 'pending_approval',
+  kind TEXT NOT NULL DEFAULT 'payment',
+  hermes_run_id TEXT,
+  tool_name TEXT,
   requested_at TEXT NOT NULL,
   resolved_at TEXT
 );
@@ -89,7 +99,7 @@ CREATE TABLE IF NOT EXISTS transactions (
   approval_id TEXT,
   vendor_name TEXT NOT NULL,
   description TEXT NOT NULL,
-  amount_usd REAL NOT NULL,
+  amount_usd DOUBLE PRECISION NOT NULL,
   status TEXT NOT NULL,
   tx_hash TEXT,
   created_at TEXT NOT NULL
@@ -108,30 +118,8 @@ CREATE TABLE IF NOT EXISTS audit_logs (
 );
 `;
 
-ensureLocalDbDir();
+const sql = postgres(resolveDatabaseUrl(), { max: 1, prepare: false });
+await sql.unsafe(migrationSql);
+await sql.end({ timeout: 5 });
 
-const client = createLibsqlClient();
-await client.executeMultiple(migrationSql);
-
-const alters = [
-  `ALTER TABLE organizations ADD COLUMN treasury_wallet_address TEXT`,
-  `ALTER TABLE agents ADD COLUMN wallet_provisioned INTEGER NOT NULL DEFAULT 0`,
-  `ALTER TABLE agents ADD COLUMN wallet_private_key TEXT`,
-  `ALTER TABLE agent_policies ADD COLUMN negotiation_rules TEXT`,
-  `ALTER TABLE agents ADD COLUMN hermes_profile_name TEXT`,
-  `ALTER TABLE agents ADD COLUMN hermes_provisioned INTEGER NOT NULL DEFAULT 0`,
-  `ALTER TABLE approvals ADD COLUMN kind TEXT NOT NULL DEFAULT 'payment'`,
-  `ALTER TABLE approvals ADD COLUMN hermes_run_id TEXT`,
-  `ALTER TABLE approvals ADD COLUMN tool_name TEXT`,
-];
-for (const sql of alters) {
-  try {
-    await client.execute(sql);
-  } catch {
-    // column already exists
-  }
-}
-
-client.close();
-
-console.log(`Migrated database at ${resolveDbUrl()}`);
+console.log(`Migrated PostgreSQL at ${resolveDatabaseUrl().replace(/:[^:@/]+@/, ":***@")}`);

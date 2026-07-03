@@ -1,5 +1,5 @@
 import { eq } from "drizzle-orm";
-import { getDb, schema } from "./index.js";
+import { getDb, schema, closeDb } from "./index.js";
 
 const ORG_ID = "org_demo";
 const now = () => new Date().toISOString();
@@ -256,7 +256,9 @@ const POLICY_RULES: Record<string, string> = {
   console.log("Seeded demo organization, agents, vendors, approvals, and transactions.");
 }
 
-seed().catch((err) => {
-  console.error(err);
-  process.exit(1);
-});
+seed()
+  .catch((err) => {
+    console.error(err);
+    process.exit(1);
+  })
+  .finally(() => closeDb());

@@ -1,10 +1,18 @@
 import fs from "node:fs/promises";
-import os from "node:os";
 import path from "node:path";
 import { eq } from "@agntpymt/db";
 import { getDb, schema, type Agent } from "@agntpymt/db";
 import { parse as parseYaml, stringify as stringifyYaml } from "yaml";
-import { env, rootDir } from "../config.js";
+import { env } from "../config.js";
+import {
+  getHermesHomeDir,
+  getProfilesDir,
+  legacyHermesHomeDir,
+  profileDirForAgent,
+  profileNameForAgent,
+  profileStoragePrefix,
+} from "./hermes-paths.js";
+import { getProfileStore, profileKey } from "./profile-store.js";
 
 const AGNTPYMT_MCP_NAME = "agntpymt";
 
@@ -39,33 +47,12 @@ export type HermesProfileStatus = {
   capabilities: HermesCapabilities;
 };
 
-function expandHome(p: string): string {
-  if (p.startsWith("~/")) return path.join(os.homedir(), p.slice(2));
-  return p;
-}
-
-/** Legacy path used before Windows-native Hermes home was implemented. */
-function legacyHermesHomeDir(): string {
-  return path.join(os.homedir(), ".hermes");
-}
-
-/** Match Hermes: %LOCALAPPDATA%\\hermes on Windows, ~/.hermes elsewhere. */
-export function getHermesHomeDir(): string {
-  const explicit = process.env.HERMES_HOME?.trim();
-  if (explicit) return expandHome(explicit);
-  if (process.platform === "win32") {
-    const local = process.env.LOCALAPPDATA;
-    if (local) return path.join(local, "hermes");
-    return path.join(os.homedir(), "AppData", "Local", "hermes");
-  }
-  return path.join(os.homedir(), ".hermes");
-}
-
-export function getProfilesDir(): string {
-  const explicit = process.env.HERMES_PROFILES_DIR?.trim();
-  if (explicit) return expandHome(explicit);
-  return path.join(getHermesHomeDir(), "profiles");
-}
+export {
+  getHermesHomeDir,
+  getProfilesDir,
+  profileDirForAgent,
+  profileNameForAgent,
+} from "./hermes-paths.js";
 
 /** Copy agent profiles from ~/.hermes/profiles when upgrading Windows paths. */
 export async function migrateLegacyHermesProfiles(): Promise<void> {
@@ -94,16 +81,8 @@ export async function migrateLegacyHermesProfiles(): Promise<void> {
   }
 }
 
-export function profileNameForAgent(orgId: string, agentId: string): string {
-  return `${orgId}__${agentId}`;
-}
-
-export function profileDirForAgent(agent: Pick<Agent, "orgId" | "id" | "hermesProfileName">): string {
-  const name = agent.hermesProfileName ?? profileNameForAgent(agent.orgId, agent.id);
-  return path.join(getProfilesDir(), name);
-}
-
 function agntpymtApiUrl(): string {
+  if (env.agntpymtPublicUrl.trim()) return env.agntpymtPublicUrl.replace(/\/$/, "");
   const raw = process.env.AGNTPYMT_API_URL ?? `http://127.0.0.1:${env.port}`;
   return raw.replace(/^http:\/\/localhost\b/i, "http://127.0.0.1");
 }
@@ -158,10 +137,10 @@ When spending money, always pass **agentId** (\`${agentId}\`) and **runId** (fro
 `;
 }
 
-async function ensurePaymentSkill(profilePath: string, agentId: string): Promise<void> {
-  const skillDir = path.join(profilePath, "skills", "agntpymt-payments");
-  await fs.mkdir(skillDir, { recursive: true });
-  await fs.writeFile(path.join(skillDir, "SKILL.md"), buildPaymentSkillMd(agentId), "utf8");
+async function ensurePaymentSkill(profileName: string, agentId: string): Promise<void> {
+  const store = getProfileStore();
+  const key = profileKey(profileStoragePrefix(profileName), "skills", "agntpymt-payments", "SKILL.md");
+  await store.writeText(key, buildPaymentSkillMd(agentId));
 }
 
 function buildSoulSeed(
@@ -216,13 +195,13 @@ function agntpymtMcpBlock(agentId: string): Record<string, unknown> {
 
 /** Gateway loads MCP from the platform Hermes home — keep it in sync with AgntPymt-1. */
 export async function syncHermesGatewayMcpConfig(agentId = ""): Promise<void> {
-  const hermesHome = getHermesHomeDir();
-  const configPath = path.join(hermesHome, "config.yaml");
+  const store = getProfileStore();
+  const configKey = profileKey("config.yaml");
   let config: Record<string, unknown>;
-  try {
-    const raw = await fs.readFile(configPath, "utf8");
+  const raw = await store.readText(configKey);
+  if (raw) {
     config = (parseYaml(raw) as Record<string, unknown>) ?? {};
-  } catch {
+  } else {
     config = {};
   }
 
@@ -244,17 +223,14 @@ export async function syncHermesGatewayMcpConfig(agentId = ""): Promise<void> {
   config.mcp_servers = mcp;
   config.mcp_discovery_timeout = 30;
   const nextYaml = stringifyYaml(config);
-  let prevYaml = "";
-  try {
-    prevYaml = await fs.readFile(configPath, "utf8");
-  } catch {
-    /* new file */
-  }
+  const prevYaml = raw ?? "";
   if (prevYaml === nextYaml) return;
 
-  await fs.mkdir(hermesHome, { recursive: true });
-  await fs.writeFile(configPath, nextYaml, "utf8");
-  console.log(`Synced agntpymt MCP → ${configPath}`);
+  await store.writeText(configKey, nextYaml);
+  const dest = env.gcsProfileBucket
+    ? `gs://${env.gcsProfileBucket}/${env.gcsProfilePrefix}/config.yaml`
+    : path.join(getHermesHomeDir(), "config.yaml");
+  console.log(`Synced agntpymt MCP → ${dest}`);
 }
 
 /** Hermes runs use per-agent profile config — must match gateway MCP launch spec. */
@@ -279,20 +255,24 @@ export async function syncAllProvisionedProfileMcp(): Promise<number> {
   return count;
 }
 
+function profileNameFromPath(profilePath: string): string {
+  return path.basename(profilePath);
+}
+
 async function readConfig(profilePath: string): Promise<Record<string, unknown>> {
-  const configPath = path.join(profilePath, "config.yaml");
-  try {
-    const raw = await fs.readFile(configPath, "utf8");
-    const parsed = parseYaml(raw);
-    return parsed && typeof parsed === "object" ? (parsed as Record<string, unknown>) : {};
-  } catch {
-    return {};
-  }
+  const name = profileNameFromPath(profilePath);
+  const raw = await getProfileStore().readText(profileKey(profileStoragePrefix(name), "config.yaml"));
+  if (!raw) return {};
+  const parsed = parseYaml(raw);
+  return parsed && typeof parsed === "object" ? (parsed as Record<string, unknown>) : {};
 }
 
 async function writeConfig(profilePath: string, config: Record<string, unknown>): Promise<void> {
-  const configPath = path.join(profilePath, "config.yaml");
-  await fs.writeFile(configPath, stringifyYaml(config), "utf8");
+  const name = profileNameFromPath(profilePath);
+  await getProfileStore().writeText(
+    profileKey(profileStoragePrefix(name), "config.yaml"),
+    stringifyYaml(config)
+  );
 }
 
 function parseSkillFrontmatter(content: string): { name: string; description: string; body: string } {
@@ -314,29 +294,23 @@ function buildSkillMd(name: string, description: string, body: string): string {
 }
 
 export async function scanSkills(profilePath: string): Promise<HermesSkill[]> {
-  const skillsDir = path.join(profilePath, "skills");
-  let entries: string[] = [];
-  try {
-    entries = await fs.readdir(skillsDir);
-  } catch {
-    return [];
-  }
+  const name = profileNameFromPath(profilePath);
+  const store = getProfileStore();
+  const entries = await store.listPrefixes(profileKey(profileStoragePrefix(name), "skills"));
 
   const skills: HermesSkill[] = [];
   for (const entry of entries) {
-    const skillPath = path.join(skillsDir, entry, "SKILL.md");
-    try {
-      const content = await fs.readFile(skillPath, "utf8");
-      const parsed = parseSkillFrontmatter(content);
-      skills.push({
-        id: entry,
-        name: parsed.name || entry,
-        description: parsed.description,
-        content,
-      });
-    } catch {
-      // skip invalid skill folders
-    }
+    const content = await store.readText(
+      profileKey(profileStoragePrefix(name), "skills", entry, "SKILL.md")
+    );
+    if (!content) continue;
+    const parsed = parseSkillFrontmatter(content);
+    skills.push({
+      id: entry,
+      name: parsed.name || entry,
+      description: parsed.description,
+      content,
+    });
   }
   return skills.sort((a, b) => a.name.localeCompare(b.name));
 }
@@ -364,15 +338,13 @@ export async function getCapabilities(profilePath: string): Promise<HermesCapabi
 }
 
 export async function readSoul(profilePath: string): Promise<string> {
-  try {
-    return await fs.readFile(path.join(profilePath, "SOUL.md"), "utf8");
-  } catch {
-    return "";
-  }
+  const name = profileNameFromPath(profilePath);
+  return (await getProfileStore().readText(profileKey(profileStoragePrefix(name), "SOUL.md"))) ?? "";
 }
 
 export async function writeSoul(profilePath: string, soul: string): Promise<void> {
-  await fs.writeFile(path.join(profilePath, "SOUL.md"), soul, "utf8");
+  const name = profileNameFromPath(profilePath);
+  await getProfileStore().writeText(profileKey(profileStoragePrefix(name), "SOUL.md"), soul);
 }
 
 export async function provisionProfile(
@@ -380,19 +352,16 @@ export async function provisionProfile(
   policy?: { negotiationRules?: string | null }
 ): Promise<HermesProfileStatus> {
   const profileName = profileNameForAgent(agent.orgId, agent.id);
-  const profilePath = path.join(getProfilesDir(), profileName);
+  const profilePath = profileDirForAgent({ ...agent, hermesProfileName: profileName });
+  const store = getProfileStore();
 
-  await fs.mkdir(path.join(profilePath, "skills"), { recursive: true });
-
-  const soulPath = path.join(profilePath, "SOUL.md");
-  try {
-    await fs.access(soulPath);
-  } catch {
-    await fs.writeFile(soulPath, buildSoulSeed(agent, policy?.negotiationRules), "utf8");
+  const soulKey = profileKey(profileStoragePrefix(profileName), "SOUL.md");
+  if (!(await store.exists(soulKey))) {
+    await store.writeText(soulKey, buildSoulSeed(agent, policy?.negotiationRules));
   }
 
   await syncProfileMcpConfig(profilePath, agent.id);
-  await ensurePaymentSkill(profilePath, agent.id);
+  await ensurePaymentSkill(profileName, agent.id);
   await syncHermesGatewayMcpConfig(agent.id);
 
   const db = getDb();
@@ -428,8 +397,9 @@ export async function ensureHermesProfile(agentId: string): Promise<HermesProfil
   }
 
   const profilePath = profileDirForAgent(agent);
+  const profileName = agent.hermesProfileName ?? profileNameForAgent(agent.orgId, agent.id);
   await syncProfileMcpConfig(profilePath, agent.id);
-  await ensurePaymentSkill(profilePath, agent.id);
+  await ensurePaymentSkill(profileName, agent.id);
   await syncHermesGatewayMcpConfig(agent.id);
   return {
     profileName: agent.hermesProfileName ?? profileNameForAgent(agent.orgId, agent.id),
@@ -467,10 +437,12 @@ export async function createSkill(
   body: string
 ): Promise<HermesSkill> {
   const safeId = id.replace(/[^a-zA-Z0-9_-]/g, "-").toLowerCase();
-  const skillDir = path.join(profilePath, "skills", safeId);
-  await fs.mkdir(skillDir, { recursive: true });
+  const profileName = profileNameFromPath(profilePath);
   const content = buildSkillMd(name, description, body);
-  await fs.writeFile(path.join(skillDir, "SKILL.md"), content, "utf8");
+  await getProfileStore().writeText(
+    profileKey(profileStoragePrefix(profileName), "skills", safeId, "SKILL.md"),
+    content
+  );
   return { id: safeId, name, description, content };
 }
 
@@ -481,14 +453,21 @@ export async function updateSkill(
   description: string,
   body: string
 ): Promise<HermesSkill> {
-  const skillDir = path.join(profilePath, "skills", skillId);
+  const profileName = profileNameFromPath(profilePath);
   const content = buildSkillMd(name, description, body);
-  await fs.writeFile(path.join(skillDir, "SKILL.md"), content, "utf8");
+  await getProfileStore().writeText(
+    profileKey(profileStoragePrefix(profileName), "skills", skillId, "SKILL.md"),
+    content
+  );
   return { id: skillId, name, description, content };
 }
 
 export async function deleteSkill(profilePath: string, skillId: string): Promise<void> {
-  await fs.rm(path.join(profilePath, "skills", skillId), { recursive: true, force: true });
+  const profileName = profileNameFromPath(profilePath);
+  await getProfileStore().remove(
+    profileKey(profileStoragePrefix(profileName), "skills", skillId),
+    { recursive: true }
+  );
 }
 
 export async function upsertMcpServer(
