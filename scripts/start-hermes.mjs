@@ -9,17 +9,22 @@ const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 const url = process.env.WAIT_URL ?? "http://127.0.0.1:3001/api/health";
 const maxAttempts = Number(process.env.WAIT_MAX_ATTEMPTS ?? 180);
 
+async function isAgntPymtApi() {
+  try {
+    const res = await fetch(url, { signal: AbortSignal.timeout(3000) });
+    if (!res.ok) return false;
+    const body = await res.json();
+    return body?.status === "ok" && body?.daemon === "running";
+  } catch {
+    return false;
+  }
+}
+
 async function waitForApi() {
   for (let i = 0; i < maxAttempts; i++) {
-    try {
-      const res = await fetch(url, { signal: AbortSignal.timeout(3000) });
-      if (res.ok) {
-        await res.text();
-        console.log(`API ready at ${url.replace(/\/api\/health\/?$/, "")} (after ~${i} attempts)`);
-        return;
-      }
-    } catch {
-      // server still starting
+    if (await isAgntPymtApi()) {
+      console.log(`API ready at ${url.replace(/\/api\/health\/?$/, "")} (after ~${i} attempts)`);
+      return;
     }
     await new Promise((r) => setTimeout(r, 1000));
   }

@@ -29,6 +29,10 @@ import {
 import { authEnabled, getOrgId } from "../middleware/auth.js";
 import { getOrCreateTenant } from "../services/tenant.js";
 import { getAuth } from "@clerk/express";
+import { erc8004Router } from "./erc8004.js";
+import { vendorErc8004Router } from "./vendor-erc8004.js";
+import { getVendorErc8004Status } from "../services/vendor-erc8004.js";
+import { listPaymentsForOrg, paymentsToCsv } from "../services/transactions.js";
 
 export const apiRouter = Router();
 
@@ -76,6 +80,8 @@ apiRouter.get("/health", async (req, res) => {
     paymentMode: env.simulatePayments ? "simulated" : "x402",
     facilitatorUrl: env.facilitatorUrl,
     network: "Base Sepolia",
+    vendorPayToAddress: env.evmPayToAddress || null,
+    erc8004IdentityRegistry: "0x8004A818BFB912233c491871b3d84c89A494BD9e",
   });
 });
 
@@ -121,6 +127,7 @@ apiRouter.get("/dashboard", async (req, res) => {
     .where(eq(schema.transactions.orgId, orgId))
     .orderBy(desc(schema.transactions.createdAt))
     .limit(5);
+  const agentNames = new Map(agents.map((a) => [a.id, a.name]));
 
   const totalBalance = agents.reduce((sum, a) => sum + a.balanceUsd, 0);
   const activeAgents = agents.filter((a) => a.status === "active").length;
@@ -154,7 +161,10 @@ apiRouter.get("/dashboard", async (req, res) => {
       })
     ),
     pendingApprovals: approvals,
-    recentTransactions: transactions,
+    recentTransactions: transactions.map((t) => ({
+      ...t,
+      agentName: agentNames.get(t.agentId) ?? t.agentId,
+    })),
     activeWallets: agents.filter((a) => a.walletProvisioned && a.walletAddress).length,
   });
 });
@@ -338,6 +348,9 @@ apiRouter.get("/agents/:id/hermes", async (req, res) => {
   res.json(status);
 });
 
+apiRouter.use("/agents/:id/erc8004", erc8004Router);
+apiRouter.use("/vendors/:id/erc8004", vendorErc8004Router);
+
 const soulSchema = z.object({ soul: z.string() });
 
 apiRouter.put("/agents/:id/hermes/soul", async (req, res) => {
@@ -466,10 +479,19 @@ apiRouter.delete("/agents/:id/hermes/mcp/:name", async (req, res) => {
   }
 });
 
-apiRouter.get("/vendors", async (_req, res) => {
+apiRouter.get("/vendors", async (req, res) => {
   const db = getDb();
+  const orgId = getOrgId(req);
   const vendors = await db.select().from(schema.vendors);
-  res.json(vendors);
+
+  await Promise.all(
+    vendors
+      .filter((v) => v.erc8004AgentId && v.erc8004Status !== "complete")
+      .map((v) => getVendorErc8004Status(v.id, orgId).catch(() => null))
+  );
+
+  const refreshed = await db.select().from(schema.vendors);
+  res.json(refreshed);
 });
 
 apiRouter.get("/approvals", async (req, res) => {
@@ -530,13 +552,16 @@ apiRouter.post("/approvals/:id/deny", async (req, res) => {
 });
 
 apiRouter.get("/transactions", async (req, res) => {
-  const db = getDb();
-  const rows = await db
-    .select()
-    .from(schema.transactions)
-    .where(eq(schema.transactions.orgId, getOrgId(req)))
-    .orderBy(desc(schema.transactions.createdAt));
+  const rows = await listPaymentsForOrg(getOrgId(req));
   res.json(rows);
+});
+
+apiRouter.get("/transactions/export", async (req, res) => {
+  const rows = await listPaymentsForOrg(getOrgId(req));
+  const stamp = new Date().toISOString().slice(0, 10);
+  res.setHeader("Content-Type", "text/csv; charset=utf-8");
+  res.setHeader("Content-Disposition", `attachment; filename="agntpymt-payments-${stamp}.csv"`);
+  res.send(paymentsToCsv(rows));
 });
 
 apiRouter.get("/logs", async (req, res) => {

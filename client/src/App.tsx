@@ -6,11 +6,16 @@ import { SignInPage } from "./pages/SignInPage";
 import { SignUpPage } from "./pages/SignUpPage";
 import { DashboardPage } from "./pages/DashboardPage";
 import { AgentsPage } from "./pages/AgentsPage";
+import { AgentDetailPage } from "./pages/AgentDetailPage";
+import { SellersPage } from "./pages/SellersPage";
+import { SellerDetailPage } from "./pages/SellerDetailPage";
 import { WalletsPage } from "./pages/WalletsPage";
 import { ApprovalsPage } from "./pages/ApprovalsPage";
 import { TransactionsPage } from "./pages/TransactionsPage";
+import { PaymentsPage } from "./pages/PaymentsPage";
 import { LogsPage } from "./pages/LogsPage";
 import { PlaceholderPage } from "./pages/PlaceholderPage";
+import { showSellerAdmin } from "./lib/features";
 
 const clerkEnabled = Boolean(import.meta.env.VITE_CLERK_PUBLISHABLE_KEY);
 
@@ -28,8 +33,15 @@ export default function App() {
         <Route element={<AppLayout />}>
           <Route path="dashboard" element={<DashboardPage />} />
           <Route path="agents" element={<AgentsPage />} />
+          <Route path="agents/:agentId" element={<AgentDetailPage />} />
+          {showSellerAdmin && (
+            <>
+              <Route path="sellers" element={<SellersPage />} />
+              <Route path="sellers/:vendorId" element={<SellerDetailPage />} />
+            </>
+          )}
           <Route path="wallets" element={<WalletsPage />} />
-          <Route path="payments" element={<PlaceholderPage title="Payments" />} />
+          <Route path="payments" element={<PaymentsPage />} />
           <Route path="approvals" element={<ApprovalsPage />} />
           <Route path="transactions" element={<TransactionsPage />} />
           <Route path="policies" element={<PlaceholderPage title="Policies" />} />

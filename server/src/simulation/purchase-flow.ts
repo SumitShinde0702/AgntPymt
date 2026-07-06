@@ -6,7 +6,8 @@ import { logAudit } from "../services/audit.js";
 import { matchVendor, buildFulfillment } from "./vendor-matcher.js";
 import { formatUsdc } from "./pricing.js";
 import { settleViaX402 } from "../chain/x402.js";
-import { generateNegotiationMessage } from "../services/negotiation-ai.js";
+import { generateNegotiationMessage, type TranscriptLine } from "../services/negotiation-ai.js";
+import { recordBuyerRatesSeller } from "../services/erc8004.js";
 
 function delay(ms: number) {
   return new Promise((resolve) => setTimeout(resolve, ms));
@@ -118,8 +119,8 @@ export async function runPurchaseFlow(params: PurchaseParams) {
 
     finalPrice = resolveFinalPrice(vendor, params, vendor.listPriceUsd);
   } else {
-  const intentMessage = await generateNegotiationMessage({
-    kind: "purchase_intent",
+  const transcript: TranscriptLine[] = [];
+  const negotiationBase = {
     agentName: agent.name,
     agentDescription: agent.description,
     vendorName: vendor.name,
@@ -128,18 +129,38 @@ export async function runPurchaseFlow(params: PurchaseParams) {
     autoApproveLimitUsd: policy.autoApproveLimitUsd,
     targetFeeUsd: env.demoTransactionFeeUsd,
     negotiationRules: policy.negotiationRules,
-  });
+    transcript,
+  };
 
-  await logAudit({
-    runId: params.runId,
-    agentId: params.agentId,
-    step: "purchase_intent",
-    message: intentMessage,
-    actor: agent.name,
-    source: params.source,
-  });
+  async function negotiateTurn(
+    kind: Parameters<typeof generateNegotiationMessage>[0]["kind"],
+    step: string,
+    actor: string,
+    role: TranscriptLine["role"],
+    extra?: Partial<Parameters<typeof generateNegotiationMessage>[0]>
+  ) {
+    const message = await generateNegotiationMessage({ ...negotiationBase, kind, ...extra });
+    transcript.push({ role, speaker: actor, text: message });
+    await logAudit({
+      runId: params.runId,
+      agentId: params.agentId,
+      step,
+      message,
+      actor,
+      source: params.source,
+      ...(extra?.quotedPriceUsd != null
+        ? { payload: { quotedPrice: extra.quotedPriceUsd } }
+        : extra?.counterOfferUsd != null
+          ? { payload: { counterOffer: extra.counterOfferUsd } }
+          : extra?.finalPriceUsd != null
+            ? { payload: { finalPrice: extra.finalPriceUsd } }
+            : {}),
+    });
+    await delay(500);
+    return message;
+  }
 
-  await delay(400);
+  await negotiateTurn("purchase_intent", "purchase_intent", agent.name, "buyer");
 
   await logAudit({
     runId: params.runId,
@@ -152,53 +173,16 @@ export async function runPurchaseFlow(params: PurchaseParams) {
 
   await delay(300);
 
-  const greetingMessage = await generateNegotiationMessage({
-    kind: "seller_greeting",
-    agentName: agent.name,
-    vendorName: vendor.name,
-    vendorDescription: vendor.description,
-    purchaseIntent: params.purchaseIntent,
-    autoApproveLimitUsd: policy.autoApproveLimitUsd,
-    targetFeeUsd: env.demoTransactionFeeUsd,
-    negotiationRules: policy.negotiationRules,
-  });
-
-  await logAudit({
-    runId: params.runId,
-    agentId: params.agentId,
-    step: "seller_contacted",
-    message: greetingMessage,
-    actor: vendor.name,
-    source: params.source,
-  });
-
-  await delay(500);
+  await negotiateTurn("seller_greeting", "seller_contacted", vendor.name, "seller");
+  await negotiateTurn("buyer_clarify", "negotiation_round", agent.name, "buyer");
 
   finalPrice = vendor.listPriceUsd;
   if (params.maxBudget != null && params.maxBudget < finalPrice) {
     finalPrice = params.maxBudget;
   }
 
-  const quoteMessage = await generateNegotiationMessage({
-    kind: "seller_quote",
-    agentName: agent.name,
-    vendorName: vendor.name,
-    vendorDescription: vendor.description,
-    purchaseIntent: params.purchaseIntent,
+  await negotiateTurn("seller_quote", "seller_quoted", vendor.name, "seller", {
     quotedPriceUsd: vendor.listPriceUsd,
-    autoApproveLimitUsd: policy.autoApproveLimitUsd,
-    targetFeeUsd: env.demoTransactionFeeUsd,
-    negotiationRules: policy.negotiationRules,
-  });
-
-  await logAudit({
-    runId: params.runId,
-    agentId: params.agentId,
-    step: "seller_quoted",
-    message: quoteMessage,
-    actor: vendor.name,
-    payload: { quotedPrice: vendor.listPriceUsd },
-    source: params.source,
   });
 
   const agentTarget =
@@ -207,78 +191,26 @@ export async function runPurchaseFlow(params: PurchaseParams) {
       : env.demoTransactionFeeUsd;
 
   if (finalPrice > agentTarget && vendor.negotiationStyle !== "instant") {
-    await delay(600);
-
-    const counterMessage = await generateNegotiationMessage({
-      kind: "buyer_counter",
-      agentName: agent.name,
-      agentDescription: agent.description,
-      vendorName: vendor.name,
-      purchaseIntent: params.purchaseIntent,
+    await negotiateTurn("buyer_counter", "negotiation_round", agent.name, "buyer", {
       quotedPriceUsd: vendor.listPriceUsd,
       counterOfferUsd: agentTarget,
-      autoApproveLimitUsd: policy.autoApproveLimitUsd,
-      targetFeeUsd: env.demoTransactionFeeUsd,
-      negotiationRules: policy.negotiationRules,
     });
-
-    await logAudit({
-      runId: params.runId,
-      agentId: params.agentId,
-      step: "negotiation_round",
-      message: counterMessage,
-      actor: agent.name,
-      payload: { counterOffer: agentTarget },
-      source: params.source,
-    });
-
-    await delay(500);
 
     if (vendor.counterPriceUsd != null && agentTarget < vendor.counterPriceUsd) {
       finalPrice = vendor.counterPriceUsd;
-      const holdMessage = await generateNegotiationMessage({
-        kind: "seller_response",
-        agentName: agent.name,
-        vendorName: vendor.name,
-        purchaseIntent: params.purchaseIntent,
+      await negotiateTurn("seller_response", "negotiation_round", vendor.name, "seller", {
+        quotedPriceUsd: vendor.listPriceUsd,
         counterOfferUsd: agentTarget,
         finalPriceUsd: finalPrice,
         vendorAccepted: false,
-        autoApproveLimitUsd: policy.autoApproveLimitUsd,
-        targetFeeUsd: env.demoTransactionFeeUsd,
-        negotiationRules: policy.negotiationRules,
-      });
-      await logAudit({
-        runId: params.runId,
-        agentId: params.agentId,
-        step: "negotiation_round",
-        message: holdMessage,
-        actor: vendor.name,
-        payload: { finalPrice },
-        source: params.source,
       });
     } else {
       finalPrice = agentTarget;
-      const acceptMessage = await generateNegotiationMessage({
-        kind: "seller_response",
-        agentName: agent.name,
-        vendorName: vendor.name,
-        purchaseIntent: params.purchaseIntent,
+      await negotiateTurn("seller_response", "negotiation_round", vendor.name, "seller", {
+        quotedPriceUsd: vendor.listPriceUsd,
         counterOfferUsd: agentTarget,
         finalPriceUsd: finalPrice,
         vendorAccepted: true,
-        autoApproveLimitUsd: policy.autoApproveLimitUsd,
-        targetFeeUsd: env.demoTransactionFeeUsd,
-        negotiationRules: policy.negotiationRules,
-      });
-      await logAudit({
-        runId: params.runId,
-        agentId: params.agentId,
-        step: "negotiation_round",
-        message: acceptMessage,
-        actor: vendor.name,
-        payload: { finalPrice },
-        source: params.source,
       });
     }
   }
@@ -443,8 +375,10 @@ export async function settlePurchase(params: {
       const hint = reason.includes("Insufficient USDC")
         ? " Fund the agent wallet with Base Sepolia USDC on the Wallets page."
         : reason.includes("Base Sepolia ETH") || reason.includes("needs testnet ETH")
-        ? ""
-        : reason.includes("not registered")
+        ? " Fund ETH gas on the Wallets page (Coinbase faucet → treasury → agent ETH gas)."
+        : reason.includes("(402)")
+          ? " Open Wallets → fund the running agent with more USDC + ETH, then retry."
+          : reason.includes("not registered")
           ? " If using facilitator.openx402.ai, register EVM_PAY_TO_ADDRESS at https://openx402.ai/register."
           : "";
       await logAudit({
@@ -478,33 +412,6 @@ export async function settlePurchase(params: {
     .where(eq(schema.sellerSessions.id, params.sessionId));
 
   const txId = nanoid();
-  await db.insert(schema.transactions).values({
-    id: txId,
-    orgId: agent.orgId,
-    agentId: params.agentId,
-    runId: params.runId,
-    approvalId: params.approvalId ?? null,
-    vendorName: params.vendor.name,
-    description: `${agent?.name ?? "Agent"} → ${params.vendor.name}`,
-    amountUsd: params.finalPrice,
-    status: env.simulatePayments ? "simulated" : "completed",
-    txHash,
-    createdAt: new Date().toISOString(),
-  });
-
-  if (agent?.walletAddress && !env.simulatePayments) {
-    const { fetchWalletBalances } = await import("../chain/wallet.js");
-    const onChain = await fetchWalletBalances(agent.walletAddress);
-    await db
-      .update(schema.agents)
-      .set({ balanceUsd: onChain.usdc })
-      .where(eq(schema.agents.id, params.agentId));
-  } else if (agent && env.simulatePayments) {
-    await db
-      .update(schema.agents)
-      .set({ balanceUsd: Math.max(0, agent.balanceUsd - params.finalPrice) })
-      .where(eq(schema.agents.id, params.agentId));
-  }
 
   await logAudit({
     runId: params.runId,
@@ -515,6 +422,69 @@ export async function settlePurchase(params: {
     payload: { ...fulfillment, txHash: txHash ?? undefined } as Record<string, unknown>,
     source: params.source,
   });
+
+  let feedbackTxHash: string | null = null;
+
+  if (!env.simulatePayments && agent) {
+    const reputation = await recordBuyerRatesSeller({
+      buyerAgentId: params.agentId,
+      vendorId: params.vendor.id,
+      paymentTxHash: txHash as `0x${string}` | undefined,
+    });
+    if (reputation.submitted && reputation.txHash) {
+      feedbackTxHash = reputation.txHash;
+      await logAudit({
+        runId: params.runId,
+        agentId: params.agentId,
+        step: "erc8004_feedback",
+        message: "Buyer agent rated seller on ERC-8004 reputation registry",
+        actor: agent.name,
+        payload: { txHash: reputation.txHash, sellerVendorId: params.vendor.id },
+        source: params.source,
+      });
+    } else if (reputation.reason === "seller_not_registered") {
+      await logAudit({
+        runId: params.runId,
+        agentId: params.agentId,
+        step: "erc8004_feedback_pending",
+        message: `Register seller agent "${params.vendor.name}" before on-chain ratings`,
+        actor: "AgntPymt",
+        payload: { reason: reputation.reason, vendorId: params.vendor.id },
+        source: params.source,
+      });
+    }
+  }
+
+  if (!agent) throw new Error("Agent not found");
+
+  await db.insert(schema.transactions).values({
+    id: txId,
+    orgId: agent.orgId,
+    agentId: params.agentId,
+    runId: params.runId,
+    approvalId: params.approvalId ?? null,
+    vendorName: params.vendor.name,
+    description: `${agent.name} → ${params.vendor.name}`,
+    amountUsd: params.finalPrice,
+    status: env.simulatePayments ? "simulated" : "completed",
+    txHash,
+    feedbackTxHash,
+    createdAt: new Date().toISOString(),
+  });
+
+  if (agent.walletAddress && !env.simulatePayments) {
+    const { fetchWalletBalances } = await import("../chain/wallet.js");
+    const onChain = await fetchWalletBalances(agent.walletAddress);
+    await db
+      .update(schema.agents)
+      .set({ balanceUsd: onChain.usdc })
+      .where(eq(schema.agents.id, params.agentId));
+  } else if (env.simulatePayments) {
+    await db
+      .update(schema.agents)
+      .set({ balanceUsd: Math.max(0, agent.balanceUsd - params.finalPrice) })
+      .where(eq(schema.agents.id, params.agentId));
+  }
 
   return {
     status: "completed" as const,

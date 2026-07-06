@@ -1,14 +1,22 @@
 import { env } from "../config.js";
 import { formatUsdc } from "../simulation/pricing.js";
 
+export type TranscriptLine = {
+  role: "buyer" | "seller";
+  speaker: string;
+  text: string;
+};
+
 export type NegotiationContext = {
   kind:
     | "purchase_intent"
     | "seller_greeting"
+    | "buyer_clarify"
     | "seller_quote"
     | "buyer_counter"
     | "seller_response"
     | "order_fulfilled";
+  transcript: TranscriptLine[];
   agentName: string;
   agentDescription?: string | null;
   vendorName: string;
@@ -26,39 +34,58 @@ export type NegotiationContext = {
 
 const FALLBACKS: Record<NegotiationContext["kind"], (ctx: NegotiationContext) => string> = {
   purchase_intent: (ctx) =>
-    `I need ${ctx.purchaseIntent.toLowerCase().replace(/^buy |^order /i, "")} — please share pricing and availability.`,
+    `Hi — I'm looking to ${ctx.purchaseIntent.toLowerCase().replace(/^buy |^order /i, "")}. What can you offer?`,
   seller_greeting: (ctx) =>
-    `Thanks for reaching out. I can help with ${ctx.purchaseIntent.toLowerCase()}. Let me pull together a quote.`,
+    `Hi ${ctx.agentName}, thanks for reaching out. What sector or dataset are you interested in?`,
+  buyer_clarify: (ctx) =>
+    `I need ${ctx.purchaseIntent.toLowerCase().replace(/^buy /i, "")} — sector overview and key metrics for our research workflow.`,
   seller_quote: (ctx) =>
-    `For this request, our list price is ${formatUsdc(ctx.quotedPriceUsd ?? 0)}.`,
+    `For that package I can do ${formatUsdc(ctx.quotedPriceUsd ?? 0)}. It includes the latest sector overview and supporting data files.`,
   buyer_counter: (ctx) =>
-    `Given our procurement policy, I'd like to counter at ${formatUsdc(ctx.counterOfferUsd ?? ctx.targetFeeUsd)}.`,
+    `That's a bit above our target. Could you do ${formatUsdc(ctx.counterOfferUsd ?? ctx.targetFeeUsd)}?`,
   seller_response: (ctx) =>
     ctx.vendorAccepted
-      ? `That works for us — we can proceed at ${formatUsdc(ctx.finalPriceUsd ?? ctx.counterOfferUsd ?? 0)}.`
-      : `I can't go as low as that. Best I can do is ${formatUsdc(ctx.finalPriceUsd ?? 0)}.`,
+      ? `Agreed — ${formatUsdc(ctx.finalPriceUsd ?? ctx.counterOfferUsd ?? 0)} works. I'll prepare delivery once payment clears.`
+      : `I can't match that. Best I can offer is ${formatUsdc(ctx.finalPriceUsd ?? 0)}.`,
   order_fulfilled: (ctx) =>
     `Done — your order is fulfilled. ${ctx.fulfillmentSummary ?? "Delivery details are in the receipt."}`,
 };
+
+const KIND_INSTRUCTIONS: Record<NegotiationContext["kind"], string> = {
+  purchase_intent: "Write the BUYER's opening message to the vendor.",
+  seller_greeting:
+    "Write the SELLER's reply to the buyer's opening. Welcome them and ask a specific follow-up question. Do NOT quote a price yet.",
+  buyer_clarify:
+    "Write the BUYER's reply to the seller's question. Be specific about what they want based on the purchase request.",
+  seller_quote:
+    "Write the SELLER's message with a clear price quote for what the buyer asked for.",
+  buyer_counter: "Write the BUYER's counter-offer in response to the seller's quote.",
+  seller_response:
+    "Write the SELLER's reply to the buyer's counter — accept or hold firm per vendorAccepted in context.",
+  order_fulfilled: "Write the SELLER's brief delivery confirmation.",
+};
+
+function formatTranscript(transcript: TranscriptLine[]): string {
+  if (transcript.length === 0) return "(no messages yet)";
+  return transcript.map((line) => `${line.speaker} (${line.role}): ${line.text}`).join("\n");
+}
 
 function buildPrompt(ctx: NegotiationContext): { system: string; user: string } {
   const rules =
     ctx.negotiationRules?.trim() ||
     `Prefer micro-payments near ${formatUsdc(ctx.targetFeeUsd)}. Auto-approve limit is ${formatUsdc(ctx.autoApproveLimitUsd)}.`;
 
-  const system = `You write short chat messages (1-2 sentences) for an AI agent commerce demo.
-Payments are in USDC on Base Sepolia. Be natural, professional, first person. No quotes around the message, no markdown, no role labels.
+  const system = `You write one chat message for an AI agent commerce demo (1-2 sentences).
+Payments are in USDC on Base Sepolia. Sound like a real business chat — respond directly to what the other party just said.
+Do not repeat yourself. Do not ignore questions. No markdown, no role labels, no quotes around the message.
 
-Buyer agent rules (must follow when writing as buyer):
+Buyer agent rules (when writing as buyer):
 ${rules}
 
-When writing as vendor, be commercial but concise. State prices clearly when relevant.`;
+When writing as seller: be commercial, answer questions, then quote when asked.`;
 
   const facts: Record<string, unknown> = {
-    kind: ctx.kind,
-    agent: ctx.agentName,
-    vendor: ctx.vendorName,
-    request: ctx.purchaseIntent,
+    purchaseRequest: ctx.purchaseIntent,
     targetFeeUsd: ctx.targetFeeUsd,
     autoApproveLimitUsd: ctx.autoApproveLimitUsd,
   };
@@ -69,17 +96,17 @@ When writing as vendor, be commercial but concise. State prices clearly when rel
   if (ctx.vendorAccepted != null) facts.vendorAccepted = ctx.vendorAccepted;
   if (ctx.fulfillmentSummary) facts.fulfillmentSummary = ctx.fulfillmentSummary;
 
-  const roleHint =
-    ctx.kind === "purchase_intent" || ctx.kind === "buyer_counter"
-      ? "Write as the BUYER agent."
-      : ctx.kind === "seller_greeting" || ctx.kind === "seller_quote" || ctx.kind === "seller_response" || ctx.kind === "order_fulfilled"
-        ? "Write as the VENDOR."
-        : "Write as the appropriate party.";
+  const user = `${KIND_INSTRUCTIONS[ctx.kind]}
 
-  return {
-    system,
-    user: `${roleHint}\n\nContext JSON:\n${JSON.stringify(facts, null, 2)}\n\nReply with only the chat message text.`,
-  };
+Conversation so far:
+${formatTranscript(ctx.transcript)}
+
+Facts for this turn:
+${JSON.stringify(facts, null, 2)}
+
+Reply with only the next chat message text.`;
+
+  return { system, user };
 }
 
 export async function generateNegotiationMessage(ctx: NegotiationContext): Promise<string> {
@@ -100,8 +127,8 @@ export async function generateNegotiationMessage(ctx: NegotiationContext): Promi
       signal: AbortSignal.timeout(15_000),
       body: JSON.stringify({
         model: env.openaiModel,
-        temperature: 0.65,
-        max_tokens: 120,
+        temperature: 0.7,
+        max_tokens: 150,
         messages: [
           { role: "system", content: system },
           { role: "user", content: user },

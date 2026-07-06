@@ -201,7 +201,11 @@ export async function settleViaX402(
 
     if (!response.ok) {
       const body = await response.text();
-      throw new Error(formatX402Failure(response.status, body, response.headers));
+      let detail = formatX402Failure(response.status, body, response.headers);
+      if (response.status === 402) {
+        detail += ` Agent wallet ${account.address} has ${balances.usdc.toFixed(4)} USDC and ${balances.eth.toFixed(6)} ETH on Base Sepolia — fund both on the Wallets page if low.`;
+      }
+      throw new Error(detail);
     }
 
     const paymentResponseHeader = response.headers.get("PAYMENT-RESPONSE");

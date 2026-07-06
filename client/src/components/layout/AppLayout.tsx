@@ -2,6 +2,7 @@ import { NavLink, Outlet } from "react-router-dom";
 import {
   LayoutDashboard,
   Bot,
+  Store,
   Wallet,
   CreditCard,
   Clock,
@@ -16,10 +17,12 @@ import { api, type HealthData, type DashboardData } from "../../lib/api";
 import { AuthControls } from "../auth/AuthControls";
 import { ApprovalToast } from "./ApprovalToast";
 import { Logo } from "../brand/Logo";
+import { showSellerAdmin } from "../../lib/features";
 
 const nav = [
   { to: "/dashboard", label: "Dashboard", icon: LayoutDashboard },
   { to: "/agents", label: "Agents", icon: Bot },
+  ...(showSellerAdmin ? [{ to: "/sellers", label: "Sellers", icon: Store }] : []),
   { to: "/wallets", label: "Wallets", icon: Wallet },
   { to: "/payments", label: "Payments", icon: CreditCard },
   { to: "/approvals", label: "Approvals", icon: Clock, badge: true },

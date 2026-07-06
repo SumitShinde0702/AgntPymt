@@ -120,6 +120,27 @@ CREATE TABLE IF NOT EXISTS audit_logs (
 
 const sql = postgres(resolveDatabaseUrl(), { max: 1, prepare: false });
 await sql.unsafe(migrationSql);
+
+const alterSql = `
+ALTER TABLE agents ADD COLUMN IF NOT EXISTS erc8004_agent_id TEXT;
+ALTER TABLE agents ADD COLUMN IF NOT EXISTS erc8004_status TEXT NOT NULL DEFAULT 'none';
+ALTER TABLE agents ADD COLUMN IF NOT EXISTS erc8004_register_tx TEXT;
+ALTER TABLE agents ADD COLUMN IF NOT EXISTS erc8004_uri_tx TEXT;
+ALTER TABLE agents ADD COLUMN IF NOT EXISTS erc8004_wallet_tx TEXT;
+ALTER TABLE agents ADD COLUMN IF NOT EXISTS erc8004_registered_at TEXT;
+
+ALTER TABLE vendors ADD COLUMN IF NOT EXISTS wallet_address TEXT;
+ALTER TABLE vendors ADD COLUMN IF NOT EXISTS erc8004_agent_id TEXT;
+ALTER TABLE vendors ADD COLUMN IF NOT EXISTS erc8004_status TEXT NOT NULL DEFAULT 'none';
+ALTER TABLE vendors ADD COLUMN IF NOT EXISTS erc8004_register_tx TEXT;
+ALTER TABLE vendors ADD COLUMN IF NOT EXISTS erc8004_uri_tx TEXT;
+ALTER TABLE vendors ADD COLUMN IF NOT EXISTS erc8004_wallet_tx TEXT;
+ALTER TABLE vendors ADD COLUMN IF NOT EXISTS erc8004_registered_at TEXT;
+
+ALTER TABLE transactions ADD COLUMN IF NOT EXISTS feedback_tx_hash TEXT;
+`;
+
+await sql.unsafe(alterSql);
 await sql.end({ timeout: 5 });
 
 console.log(`Migrated PostgreSQL at ${resolveDatabaseUrl().replace(/:[^:@/]+@/, ":***@")}`);

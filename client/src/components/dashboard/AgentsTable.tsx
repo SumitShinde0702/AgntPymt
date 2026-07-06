@@ -1,3 +1,4 @@
+import { Link } from "react-router-dom";
 import { MoreHorizontal } from "lucide-react";
 import type { Agent } from "../../lib/api";
 
@@ -56,9 +57,9 @@ export function AgentsTable({ agents, onNewAgent }: Props) {
               </tr>
             ) : (
               agents.map((a) => (
-                <tr key={a.id} className="border-t border-slate-100">
+                <tr key={a.id} className="border-t border-slate-100 hover:bg-slate-50/50">
                   <td className="px-5 py-4">
-                    <div className="flex items-center gap-3">
+                    <Link to={`/agents/${a.id}`} className="flex items-center gap-3">
                       <div
                         className={`flex h-9 w-9 items-center justify-center rounded-lg ${colorMap[a.iconColor] ?? colorMap.violet}`}
                       >
@@ -68,7 +69,7 @@ export function AgentsTable({ agents, onNewAgent }: Props) {
                         <div className="font-medium text-slate-900">{a.name}</div>
                         <div className="text-xs capitalize text-slate-500">{a.category}</div>
                       </div>
-                    </div>
+                    </Link>
                   </td>
                   <td className="px-5 py-4 font-mono text-xs text-slate-600">
                     {a.walletAddress ? `${a.walletAddress.slice(0, 6)}…${a.walletAddress.slice(-4)}` : "—"}

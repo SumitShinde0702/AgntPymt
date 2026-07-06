@@ -45,6 +45,23 @@ export async function api<T>(path: string, init?: RequestInit): Promise<T> {
   return res.json();
 }
 
+export async function downloadPaymentsCsv(): Promise<void> {
+  const headers = await authHeaders();
+  const res = await fetch(apiUrl("/api/transactions/export"), { headers });
+  if (!res.ok) {
+    const err = await res.json().catch(() => ({}));
+    throw new Error((err as { error?: string }).error ?? res.statusText);
+  }
+  const blob = await res.blob();
+  const stamp = new Date().toISOString().slice(0, 10);
+  const url = URL.createObjectURL(blob);
+  const anchor = document.createElement("a");
+  anchor.href = url;
+  anchor.download = `agntpymt-payments-${stamp}.csv`;
+  anchor.click();
+  URL.revokeObjectURL(url);
+}
+
 function parseSseChunk(chunk: string, onEvent: (data: string) => void) {
   for (const line of chunk.split("\n")) {
     if (line.startsWith("data: ")) {
@@ -192,12 +209,15 @@ export type RunHistory = {
 
 export type Transaction = {
   id: string;
+  runId: string | null;
   agentId: string;
+  agentName: string;
   vendorName: string;
   description: string;
   amountUsd: number;
   status: string;
   txHash: string | null;
+  feedbackTxHash: string | null;
   createdAt: string;
 };
 
@@ -208,6 +228,28 @@ export type RunEvent = {
   actor?: string;
   payload?: Record<string, unknown>;
   createdAt: string;
+};
+
+export type Erc8004AgentStatus = {
+  lifecycle: "none" | "registered" | "complete";
+  agentId: string | null;
+  registerTx: string | null;
+  uriTx: string | null;
+  walletTx: string | null;
+  registeredAt: string | null;
+  treasuryAddress: string | null;
+  identityRegistry: string;
+  onChain: {
+    agentId: string;
+    owner: string | null;
+    tokenUri: string | null;
+    verifiedWallet: string | null;
+    walletMatches: boolean;
+  } | null;
+  registration: Record<string, unknown> | null;
+  registrationUri: string | null;
+  reputation: { count: number; summaryValue: number; valueDecimals: number } | null;
+  nextStep: "connect_treasury" | "register" | "set_uri" | "link_wallet" | "done";
 };
 
 export type HealthData = {
@@ -221,6 +263,8 @@ export type HealthData = {
   demoTransactionFeeUsd?: number;
   aiNegotiation?: boolean;
   network: string;
+  vendorPayToAddress?: string | null;
+  erc8004IdentityRegistry?: string;
 };
 
 export type AgentWalletRow = {

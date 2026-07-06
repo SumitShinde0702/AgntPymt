@@ -33,6 +33,12 @@ export const agents = pgTable("agents", {
   balanceUsd: doublePrecision("balance_usd").notNull().default(0),
   hermesProfileName: text("hermes_profile_name"),
   hermesProvisioned: boolean("hermes_provisioned").notNull().default(false),
+  erc8004AgentId: text("erc8004_agent_id"),
+  erc8004Status: text("erc8004_status").notNull().default("none"),
+  erc8004RegisterTx: text("erc8004_register_tx"),
+  erc8004UriTx: text("erc8004_uri_tx"),
+  erc8004WalletTx: text("erc8004_wallet_tx"),
+  erc8004RegisteredAt: text("erc8004_registered_at"),
   createdAt: text("created_at").notNull(),
 });
 
@@ -52,6 +58,13 @@ export const vendors = pgTable("vendors", {
   listPriceUsd: doublePrecision("list_price_usd").notNull(),
   counterPriceUsd: doublePrecision("counter_price_usd"),
   negotiationStyle: text("negotiation_style").notNull().default("instant"),
+  walletAddress: text("wallet_address"),
+  erc8004AgentId: text("erc8004_agent_id"),
+  erc8004Status: text("erc8004_status").notNull().default("none"),
+  erc8004RegisterTx: text("erc8004_register_tx"),
+  erc8004UriTx: text("erc8004_uri_tx"),
+  erc8004WalletTx: text("erc8004_wallet_tx"),
+  erc8004RegisteredAt: text("erc8004_registered_at"),
 });
 
 export const runs = pgTable("runs", {
@@ -105,6 +118,7 @@ export const transactions = pgTable("transactions", {
   amountUsd: doublePrecision("amount_usd").notNull(),
   status: text("status").notNull(),
   txHash: text("tx_hash"),
+  feedbackTxHash: text("feedback_tx_hash"),
   createdAt: text("created_at").notNull(),
 });
 

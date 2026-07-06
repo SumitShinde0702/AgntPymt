@@ -32,6 +32,8 @@ export const env = {
   gcsProfilePrefix: (process.env.GCS_PROFILE_PREFIX ?? "hermes").replace(/^\/+|\/+$/g, ""),
   agntpymtPublicUrl: process.env.AGNTPYMT_PUBLIC_URL ?? "",
   mcpServiceKey: process.env.AGNTPYMT_MCP_KEY ?? "dev-mcp-key",
+  /** Optional — auto-submit ERC-8004 vendor feedback after x402 settlement (must match EVM_PAY_TO_ADDRESS). */
+  vendorWalletPrivateKey: (process.env.VENDOR_WALLET_PRIVATE_KEY ?? "") as `0x${string}` | "",
   clerkSecretKey,
   clerkPublishableKey,
   openaiApiKey: process.env.OPENAI_API_KEY ?? "",
