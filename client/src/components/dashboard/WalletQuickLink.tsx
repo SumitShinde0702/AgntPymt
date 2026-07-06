@@ -8,7 +8,7 @@ export function WalletQuickLink({ agents }: { agents: Agent[] }) {
   return (
     <div className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
       <div className="mb-3 flex items-center gap-2">
-        <Wallet className="h-5 w-5 text-brand-600" />
+        <Wallet className="h-5 w-5 text-accent-cyan" />
         <h2 className="text-lg font-semibold">Agent Wallets</h2>
       </div>
       <p className="mb-3 text-sm text-slate-600">
@@ -16,7 +16,7 @@ export function WalletQuickLink({ agents }: { agents: Agent[] }) {
       </p>
       <Link
         to="/wallets"
-        className="inline-flex items-center gap-2 rounded-lg bg-brand-600 px-4 py-2 text-sm font-medium text-white hover:bg-brand-700"
+        className="btn-primary"
       >
         Manage wallets
         <ExternalLink className="h-3.5 w-3.5" />

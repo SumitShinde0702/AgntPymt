@@ -440,8 +440,10 @@ export async function settlePurchase(params: {
       });
     } catch (err) {
       const reason = err instanceof Error ? err.message : "x402 settlement failed";
-      const hint = reason.includes("Insufficient USDC") || reason.includes("needs testnet ETH")
-        ? " Fund the agent wallet with USDC + ETH on the Wallets page."
+      const hint = reason.includes("Insufficient USDC")
+        ? " Fund the agent wallet with Base Sepolia USDC on the Wallets page."
+        : reason.includes("Base Sepolia ETH") || reason.includes("needs testnet ETH")
+        ? ""
         : reason.includes("not registered")
           ? " If using facilitator.openx402.ai, register EVM_PAY_TO_ADDRESS at https://openx402.ai/register."
           : "";
@@ -449,7 +451,7 @@ export async function settlePurchase(params: {
         runId: params.runId,
         agentId: params.agentId,
         step: "payment_failed",
-        message: `x402 settlement failed — ${reason}.${hint}`,
+        message: `x402 settlement failed — ${reason}${hint}`,
         actor: "AgntPymt",
         payload: { agentWallet: agent.walletAddress, protocol: "x402" },
         source: params.source,

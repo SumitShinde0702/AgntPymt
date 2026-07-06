@@ -1,6 +1,8 @@
 import { and, desc, eq, getDb, schema } from "@agntpymt/db";
 import { getActiveRunId } from "../services/run-context.js";
 
+const DEFAULT_AGENT_ID = process.env.AGENT_ID ?? "";
+
 async function loadAgent(agentId: string) {
   const db = getDb();
   const [agent] = await db.select().from(schema.agents).where(eq(schema.agents.id, agentId));
@@ -12,8 +14,38 @@ async function loadAgent(agentId: string) {
   return { agent, policy };
 }
 
+/** HTTP MCP does not inherit Hermes mcp_servers.env — resolve agentId from args, runId, or active run. */
+export async function resolveAgentId(args: Record<string, unknown>): Promise<string> {
+  const fromArgs = args.agentId ?? args.agent_id;
+  if (typeof fromArgs === "string" && fromArgs.trim()) return fromArgs.trim();
+  if (DEFAULT_AGENT_ID.trim()) return DEFAULT_AGENT_ID.trim();
+
+  const runId = args.runId ?? args.run_id;
+  if (typeof runId === "string" && runId.trim()) {
+    const db = getDb();
+    const [run] = await db
+      .select({ agentId: schema.runs.agentId })
+      .from(schema.runs)
+      .where(eq(schema.runs.id, runId.trim()))
+      .limit(1);
+    if (run?.agentId) return run.agentId;
+  }
+
+  const db = getDb();
+  const [active] = await db
+    .select({ agentId: schema.runs.agentId })
+    .from(schema.runs)
+    .where(eq(schema.runs.status, "running"))
+    .orderBy(desc(schema.runs.createdAt))
+    .limit(1);
+  if (active?.agentId) return active.agentId;
+
+  throw new Error("agentId is required (pass agentId or runId in tool args)");
+}
+
 export async function resolveRunId(agentId: string, args: Record<string, unknown>): Promise<string> {
   if (typeof args.runId === "string" && args.runId.trim()) return args.runId;
+  if (typeof args.run_id === "string" && args.run_id.trim()) return args.run_id;
   const active = await getActiveRunId(agentId);
   if (active) return active;
   return `mcp_${Date.now()}`;

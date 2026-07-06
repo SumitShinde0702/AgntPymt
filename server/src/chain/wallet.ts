@@ -75,7 +75,7 @@ export async function transferUsdcFromAgentWallet(
 
   if (balances.eth < MIN_GAS_ETH) {
     throw new Error(
-      `Agent wallet ${account.address} needs testnet ETH for gas (has ${balances.eth.toFixed(6)} ETH)`
+      `Agent wallet ${account.address} needs free Base Sepolia ETH for gas (has ${balances.eth.toFixed(6)} ETH). Open Wallets → fund treasury from Coinbase faucet (no mainnet ETH), then click ETH gas.`
     );
   }
 

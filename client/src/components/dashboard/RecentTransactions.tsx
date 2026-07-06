@@ -13,7 +13,7 @@ export function RecentTransactions({ transactions }: { transactions: Transaction
     <div className="rounded-2xl border border-slate-200 bg-white shadow-sm">
       <div className="flex items-center justify-between border-b border-slate-200 px-5 py-4">
         <h2 className="text-lg font-semibold">Recent Transactions</h2>
-        <a href="/transactions" className="text-sm font-medium text-brand-600 hover:text-brand-700">
+        <a href="/transactions" className="link-primary text-sm">
           View all
         </a>
       </div>
@@ -35,7 +35,7 @@ export function RecentTransactions({ transactions }: { transactions: Transaction
                     href={txExplorerUrl(t.txHash)}
                     target="_blank"
                     rel="noreferrer"
-                    className="mt-1 inline-flex items-center gap-1 font-mono text-xs text-brand-600 hover:underline"
+                    className="mt-1 inline-flex items-center gap-1 font-mono text-xs text-accent-cyan hover:underline"
                   >
                     {t.txHash.slice(0, 14)}…{t.txHash.slice(-8)}
                     <ExternalLink className="h-3 w-3" />

@@ -139,7 +139,7 @@ function ChatBubble({
               <button
                 type="button"
                 onClick={() => void onHermesApproval(approvalId, "approve")}
-                className="rounded-lg bg-brand-600 px-3 py-1 text-xs font-medium text-white hover:bg-brand-700"
+                className="btn-primary-xs"
               >
                 Approve once
               </button>
@@ -161,15 +161,15 @@ function ChatBubble({
   return (
     <div className={`flex gap-2 px-1 py-1 ${isBuyer ? "flex-row-reverse" : "flex-row"}`}>
       <div
-        className={`flex h-8 w-8 shrink-0 items-center justify-center rounded-full ${
-          isBuyer ? "bg-brand-100 text-brand-700" : "bg-violet-100 text-violet-700"
-        }`}
+        className={
+          isBuyer ? "icon-well-round h-8 w-8 shrink-0 text-accent-cyan" : "icon-well-round h-8 w-8 shrink-0 text-accent-navy"
+        }
       >
         {isBuyer ? <Bot className="h-4 w-4" /> : <Store className="h-4 w-4" />}
       </div>
 
       <div className={`max-w-[78%] ${isBuyer ? "items-end" : "items-start"} flex flex-col`}>
-        <div className={`mb-0.5 text-[11px] font-medium ${isBuyer ? "text-right text-brand-600" : "text-violet-600"}`}>
+        <div className={`mb-0.5 text-[11px] font-medium ${isBuyer ? "text-right text-accent-cyan" : "text-accent-navy"}`}>
           {isUser ? "You" : isBuyer ? "Your agent" : "Vendor"}
           {event.actor && event.actor !== agentName && (
             <span className="text-slate-400"> · {event.actor}</span>
@@ -178,8 +178,8 @@ function ChatBubble({
         <div
           className={`rounded-2xl px-3 py-2 text-sm leading-snug shadow-sm ${
             isBuyer
-              ? "rounded-tr-sm bg-brand-600 text-white"
-              : "rounded-tl-sm border border-violet-200 bg-violet-50 text-slate-800"
+              ? "rounded-tr-sm bg-accent-cyan text-white"
+              : "rounded-tl-sm border border-slate-200 bg-slate-50 text-slate-800"
           }`}
         >
           <span className="mb-1 block text-[10px] font-semibold uppercase tracking-wide opacity-70">
@@ -187,7 +187,7 @@ function ChatBubble({
           </span>
           {event.message}
           {txHash && (
-            <div className={isBuyer ? "text-brand-100" : ""}>
+            <div className={isBuyer ? "text-white/80" : ""}>
               <TxHashLink txHash={txHash} />
             </div>
           )}
@@ -217,11 +217,11 @@ export function RunChatFeed({ events, agentName, emptyMessage, onHermesApproval 
     return (
       <div className="flex h-full flex-col items-center justify-center px-4 text-center">
         <div className="mb-3 flex gap-3">
-          <div className="flex h-10 w-10 items-center justify-center rounded-full bg-brand-100 text-brand-600">
+          <div className="icon-well-round h-10 w-10">
             <Bot className="h-5 w-5" />
           </div>
           <div className="flex items-center text-slate-300">↔</div>
-          <div className="flex h-10 w-10 items-center justify-center rounded-full bg-violet-100 text-violet-600">
+          <div className="icon-well-round h-10 w-10 text-accent-navy">
             <Store className="h-5 w-5" />
           </div>
         </div>

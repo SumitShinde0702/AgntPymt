@@ -36,7 +36,7 @@ export function DashboardPage() {
           title="Total Balance (All Agents)"
           value={`$${data.kpis.totalBalanceUsd.toFixed(2)} USDC`}
           icon="wallet"
-          tone="violet"
+          tone="brand"
         />
         <KpiCard title="Active Agents" value={data.kpis.activeAgents} icon="bot" tone="green" />
         <KpiCard

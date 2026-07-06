@@ -34,7 +34,7 @@ export function PendingApprovals({ approvals, agents, onUpdate }: Props) {
     <div className="rounded-2xl border border-slate-200 bg-white shadow-sm">
       <div className="flex items-center justify-between border-b border-slate-200 px-5 py-4">
         <h2 className="text-lg font-semibold">Pending Approvals</h2>
-        <a href="/approvals" className="text-sm font-medium text-brand-600 hover:text-brand-700">
+        <a href="/approvals" className="link-primary text-sm">
           View all
         </a>
       </div>
@@ -60,7 +60,7 @@ export function PendingApprovals({ approvals, agents, onUpdate }: Props) {
                   </span>
                 )}
               </div>
-              <div className="mb-1 text-sm text-brand-600">{a.vendorName}</div>
+              <div className="mb-1 text-sm text-accent-cyan">{a.vendorName}</div>
               <p className="mb-2 text-sm text-slate-600">{a.reason}</p>
               <div className="mb-3 text-xs text-slate-400">{timeAgo(a.requestedAt)}</div>
               <div className="flex flex-wrap gap-2">
@@ -82,7 +82,7 @@ export function PendingApprovals({ approvals, agents, onUpdate }: Props) {
                 <button
                   type="button"
                   onClick={() => void approve(a.id)}
-                  className="rounded-lg bg-brand-600 px-3 py-1.5 text-sm font-medium text-white hover:bg-brand-700"
+                  className="btn-primary-sm"
                 >
                   Approve
                 </button>

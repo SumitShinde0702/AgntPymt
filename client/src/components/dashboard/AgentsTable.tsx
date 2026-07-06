@@ -2,7 +2,7 @@ import { MoreHorizontal } from "lucide-react";
 import type { Agent } from "../../lib/api";
 
 const colorMap: Record<string, string> = {
-  violet: "bg-violet-100 text-violet-700",
+  violet: "bg-slate-100 text-accent-navy",
   blue: "bg-blue-100 text-blue-700",
   green: "bg-emerald-100 text-emerald-700",
   orange: "bg-orange-100 text-orange-700",
@@ -21,7 +21,7 @@ export function AgentsTable({ agents, onNewAgent }: Props) {
         <button
           type="button"
           onClick={onNewAgent}
-          className="rounded-lg bg-brand-600 px-3 py-1.5 text-sm font-medium text-white hover:bg-brand-700"
+          className="btn-primary-sm"
         >
           + New Agent
         </button>
@@ -47,7 +47,7 @@ export function AgentsTable({ agents, onNewAgent }: Props) {
                     <button
                       type="button"
                       onClick={onNewAgent}
-                      className="font-medium text-brand-600 hover:underline"
+                      className="link-primary"
                     >
                       Create one
                     </button>
@@ -77,7 +77,7 @@ export function AgentsTable({ agents, onNewAgent }: Props) {
                   <td className="px-5 py-4">
                     {a.hermesProvisioned ? (
                       <div className="flex flex-wrap gap-1">
-                        <span className="rounded-full bg-violet-50 px-2 py-0.5 text-[10px] font-medium text-violet-700">
+                        <span className="rounded-full bg-slate-100 px-2 py-0.5 text-[10px] font-medium text-accent-navy">
                           {a.hermesSkillCount ?? 0} skills
                         </span>
                         <span className="rounded-full bg-blue-50 px-2 py-0.5 text-[10px] font-medium text-blue-700">

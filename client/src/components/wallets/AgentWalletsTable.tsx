@@ -3,7 +3,7 @@ import type { AgentWalletRow } from "../../lib/api";
 import { AgentWalletFund } from "./AgentWalletFund";
 
 const colorMap: Record<string, string> = {
-  violet: "bg-violet-100 text-violet-700",
+  violet: "bg-slate-100 text-accent-navy",
   blue: "bg-blue-100 text-blue-700",
   green: "bg-emerald-100 text-emerald-700",
   orange: "bg-orange-100 text-orange-700",
@@ -64,7 +64,7 @@ export function AgentWalletsTable({ agents, treasuryAddress, onFunded }: Props) 
                       <button
                         type="button"
                         onClick={() => copyText(a.walletAddress!)}
-                        className="text-slate-400 hover:text-brand-600"
+                        className="text-slate-400 hover:text-accent-cyan"
                         title="Copy address"
                       >
                         <Copy className="h-3.5 w-3.5" />
@@ -100,7 +100,9 @@ export function AgentWalletsTable({ agents, treasuryAddress, onFunded }: Props) 
       </div>
       {treasuryAddress && (
         <div className="border-t border-slate-100 px-5 py-3 text-xs text-slate-500">
-          <strong>USDC</strong> — payment balance. <strong>ETH gas</strong> — sends testnet ETH from treasury (default 0.001) so the agent can sign vendor payments.
+          <strong>USDC</strong> — payment balance. <strong>ETH gas</strong> — sends free Base Sepolia
+          ETH from treasury (default 0.001) so the agent can sign payments. Fund treasury from the
+          Coinbase faucet below (no mainnet ETH).
         </div>
       )}
     </div>

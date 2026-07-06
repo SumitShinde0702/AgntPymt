@@ -132,7 +132,7 @@ export function AgentWalletFund({ agentId, walletAddress, treasuryAddress, onFun
           type="button"
           disabled={usdcBusy || !usdcAmount.trim() || Number(usdcAmount) <= 0}
           onClick={() => fundUsdc()}
-          className="rounded-lg bg-brand-600 px-2.5 py-1.5 text-xs font-medium text-white hover:bg-brand-700 disabled:opacity-50"
+          className="btn-primary-xs disabled:opacity-50"
         >
           {usdcBusy ? "…" : "USDC"}
         </button>

@@ -16,7 +16,7 @@ import {
 import { addressExplorerUrl, txExplorerUrl } from "../lib/explorer";
 
 const colorMap: Record<string, string> = {
-  violet: "bg-violet-100 text-violet-700",
+  violet: "bg-slate-100 text-accent-navy",
   blue: "bg-blue-100 text-blue-700",
   green: "bg-emerald-100 text-emerald-700",
   orange: "bg-orange-100 text-orange-700",
@@ -60,7 +60,7 @@ function AgentTransactions({ transactions }: { transactions: Transaction[] }) {
                   href={txExplorerUrl(t.txHash)}
                   target="_blank"
                   rel="noreferrer"
-                  className="mt-1 inline-flex items-center gap-1 font-mono text-xs text-brand-600 hover:underline"
+                  className="mt-1 inline-flex items-center gap-1 font-mono text-xs text-accent-cyan hover:underline"
                 >
                   {t.txHash.slice(0, 14)}…{t.txHash.slice(-8)}
                   <ExternalLink className="h-3 w-3" />
@@ -145,7 +145,7 @@ function AgentCard({
             onClick={() => setTab(t.id)}
             className={`px-3 py-2 text-xs font-medium ${
               tab === t.id
-                ? "border-b-2 border-brand-600 text-brand-700"
+                ? "border-b-2 border-accent-cyan text-accent-navy"
                 : "text-slate-500 hover:text-slate-700"
             }`}
           >
@@ -177,7 +177,7 @@ function AgentCard({
                 <button
                   type="button"
                   onClick={() => copyText(agent.walletAddress!)}
-                  className="shrink-0 text-slate-400 hover:text-brand-600"
+                  className="shrink-0 text-slate-400 hover:text-accent-cyan"
                   title="Copy address"
                 >
                   <Copy className="h-3.5 w-3.5" />
@@ -186,7 +186,7 @@ function AgentCard({
                   href={addressExplorerUrl(agent.walletAddress)}
                   target="_blank"
                   rel="noreferrer"
-                  className="shrink-0 text-slate-400 hover:text-brand-600"
+                  className="shrink-0 text-slate-400 hover:text-accent-cyan"
                   title="View on BaseScan"
                 >
                   <ExternalLink className="h-3.5 w-3.5" />
@@ -194,7 +194,7 @@ function AgentCard({
               </div>
             </div>
           ) : (
-            <p className="mt-3 text-xs text-brand-600">Wallet provisioning…</p>
+            <p className="mt-3 text-xs text-accent-cyan">Wallet provisioning…</p>
           )}
 
           {policy && (
@@ -298,7 +298,7 @@ export function AgentsPage() {
           <button
             type="button"
             onClick={() => setShowNewAgent(true)}
-            className="inline-flex items-center gap-2 rounded-lg bg-brand-600 px-4 py-2 text-sm font-medium text-white hover:bg-brand-700"
+            className="btn-primary"
           >
             <Plus className="h-4 w-4" />
             New Agent

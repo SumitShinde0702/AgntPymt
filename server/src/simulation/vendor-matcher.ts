@@ -41,7 +41,13 @@ export function matchVendor(
   const match = vendors.find((v) => v.category === bestCategory);
   if (match) return match;
 
-  return vendors.find((v) => v.category === "generic") ?? vendors[0];
+  const fallback = vendors.find((v) => v.category === "generic") ?? vendors[0];
+  if (!fallback) {
+    throw new Error(
+      "No vendors in database — run `npm run db:seed` (or docker exec agntpymt node db/dist/seed.js)"
+    );
+  }
+  return fallback;
 }
 
 export function buildFulfillment(vendor: Vendor, purchaseIntent: string, finalPrice: number) {

@@ -312,7 +312,7 @@ export function AgentConsole({ agents, onRunComplete, onNewAgent }: Props) {
         <h2 className="text-lg font-semibold text-slate-900">Agent Console</h2>
         <p className="text-sm text-slate-500">
           AI-powered negotiation chat.{" "}
-          <Link to="/agents" className="font-medium text-brand-600 hover:underline">
+          <Link to="/agents" className="link-primary">
             Set rules per agent
           </Link>{" "}
           · fund USDC + ETH on Wallets first.
@@ -322,7 +322,7 @@ export function AgentConsole({ agents, onRunComplete, onNewAgent }: Props) {
       <div className="border-b border-slate-100 bg-slate-50/80 px-5 py-3">
         {!hasAgents ? (
           <div className="flex flex-col items-center rounded-xl border border-dashed border-slate-300 bg-white px-6 py-8 text-center">
-            <div className="mb-3 flex h-12 w-12 items-center justify-center rounded-full bg-brand-50 text-brand-600">
+            <div className="icon-well-round mb-3 h-12 w-12">
               <Bot className="h-6 w-6" />
             </div>
             <p className="text-sm font-medium text-slate-900">No agents yet</p>
@@ -333,7 +333,7 @@ export function AgentConsole({ agents, onRunComplete, onNewAgent }: Props) {
               <button
                 type="button"
                 onClick={onNewAgent}
-                className="mt-4 inline-flex items-center gap-2 rounded-lg bg-brand-600 px-4 py-2 text-sm font-medium text-white hover:bg-brand-700"
+                className="btn-primary mt-4"
               >
                 <Plus className="h-4 w-4" />
                 Create your first agent
@@ -349,7 +349,7 @@ export function AgentConsole({ agents, onRunComplete, onNewAgent }: Props) {
                   type="button"
                   onClick={() => setPrompt(ex)}
                   disabled={running}
-                  className="rounded-full border border-brand-200 bg-white px-3 py-1 text-xs text-brand-700 hover:bg-brand-50 disabled:opacity-50"
+                  className="rounded-full border border-slate-200 bg-white px-3 py-1 text-xs text-slate-700 hover:border-accent-cyan hover:bg-slate-50 hover:text-accent-navy disabled:opacity-50"
                 >
                   {ex}
                 </button>
@@ -362,7 +362,7 @@ export function AgentConsole({ agents, onRunComplete, onNewAgent }: Props) {
               rows={2}
               disabled={running}
               placeholder="Tell your agent what to buy…"
-              className="mb-3 w-full rounded-xl border border-slate-300 bg-white px-4 py-2.5 text-sm focus:border-brand-500 focus:outline-none focus:ring-2 focus:ring-brand-200 disabled:bg-slate-100"
+              className="mb-3 w-full rounded-xl border border-slate-300 bg-white px-4 py-2.5 text-sm focus:border-accent-cyan focus:outline-none focus:ring-2 focus:ring-slate-200 disabled:bg-slate-100"
             />
 
             <div className="flex items-center gap-3">
@@ -382,7 +382,7 @@ export function AgentConsole({ agents, onRunComplete, onNewAgent }: Props) {
                 type="button"
                 onClick={() => void handleRun()}
                 disabled={running || !prompt.trim() || !agentId}
-                className="inline-flex items-center gap-2 rounded-lg bg-brand-600 px-4 py-2 text-sm font-medium text-white hover:bg-brand-700 disabled:opacity-50"
+                className="btn-primary disabled:opacity-50"
               >
                 <Play className="h-4 w-4" />
                 {running ? "Negotiating…" : "Run"}
@@ -395,11 +395,11 @@ export function AgentConsole({ agents, onRunComplete, onNewAgent }: Props) {
       <div className="flex items-center justify-between border-b border-slate-100 px-5 py-2 text-[11px] text-slate-500">
         <span className="flex items-center gap-3">
           <span className="flex items-center gap-1">
-            <span className="h-2 w-2 rounded-full bg-brand-500" />
+            <span className="h-2 w-2 rounded-full bg-accent-cyan" />
             Your agent
           </span>
           <span className="flex items-center gap-1">
-            <span className="h-2 w-2 rounded-full bg-violet-500" />
+            <span className="h-2 w-2 rounded-full bg-accent-navy" />
             Vendor
           </span>
           <span className="flex items-center gap-1">
@@ -407,7 +407,7 @@ export function AgentConsole({ agents, onRunComplete, onNewAgent }: Props) {
             System
           </span>
         </span>
-        {running && <span className="animate-pulse text-brand-600">Live</span>}
+        {running && <span className="animate-pulse text-accent-cyan">Live</span>}
       </div>
 
       {runError && (

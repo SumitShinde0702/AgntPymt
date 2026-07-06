@@ -37,7 +37,7 @@ export function LogsPage() {
               {runLogs.map((log) => (
                 <div key={log.id} className="flex gap-3 text-sm">
                   <span className="w-36 shrink-0 text-xs text-slate-400">{log.step}</span>
-                  <span className="w-32 shrink-0 text-xs font-medium text-brand-700">{log.actor ?? "—"}</span>
+                  <span className="w-32 shrink-0 text-xs font-medium text-accent-navy">{log.actor ?? "—"}</span>
                   <span className="text-slate-800">{log.message}</span>
                 </div>
               ))}

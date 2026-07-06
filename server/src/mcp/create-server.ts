@@ -5,17 +5,9 @@ import {
   mcpGetAgentPolicy,
   mcpListApprovals,
   mcpListTransactions,
+  resolveAgentId,
   resolveRunId,
 } from "./tools.js";
-
-const DEFAULT_AGENT_ID = process.env.AGENT_ID ?? "";
-
-function resolveAgentId(args: Record<string, unknown>): string {
-  const fromArgs = args.agentId ?? args.agent_id;
-  if (typeof fromArgs === "string" && fromArgs.trim()) return fromArgs;
-  if (DEFAULT_AGENT_ID) return DEFAULT_AGENT_ID;
-  throw new Error("agentId is required (set AGENT_ID in MCP env or pass agentId in tool args)");
-}
 
 export function createAgnTpymtMcpServer(): Server {
   const server = new Server({ name: "agntpymt", version: "0.3.0" }, { capabilities: { tools: {} } });
@@ -85,13 +77,13 @@ export function createAgnTpymtMcpServer(): Server {
 
     try {
       if (name === "agntpymt_get_agent_policy") {
-        const agentId = resolveAgentId(a);
+        const agentId = await resolveAgentId(a);
         const result = await mcpGetAgentPolicy(agentId);
         return { content: [{ type: "text", text: JSON.stringify(result, null, 2) }] };
       }
 
       if (name === "agntpymt_initiate_purchase") {
-        const agentId = resolveAgentId(a);
+        const agentId = await resolveAgentId(a);
         const purchaseIntent = String(a.purchaseIntent ?? a.task ?? "");
         const runId = await resolveRunId(agentId, a);
         const result = await mcpExecutePurchase({
@@ -105,7 +97,7 @@ export function createAgnTpymtMcpServer(): Server {
       }
 
       if (name === "agntpymt_request_paid_resource") {
-        const agentId = resolveAgentId(a);
+        const agentId = await resolveAgentId(a);
         const resourceId = String(a.resourceId ?? a.resource_id ?? "premium-data");
         const runId = await resolveRunId(agentId, a);
         const result = await mcpExecutePurchase({
@@ -118,19 +110,19 @@ export function createAgnTpymtMcpServer(): Server {
       }
 
       if (name === "agntpymt_list_pending_approvals") {
-        const agentId = resolveAgentId(a);
+        const agentId = await resolveAgentId(a);
         const result = await mcpListApprovals(agentId);
         return { content: [{ type: "text", text: JSON.stringify(result, null, 2) }] };
       }
 
       if (name === "agntpymt_list_transactions") {
-        const agentId = resolveAgentId(a);
+        const agentId = await resolveAgentId(a);
         const result = await mcpListTransactions(agentId);
         return { content: [{ type: "text", text: JSON.stringify(result, null, 2) }] };
       }
 
       if (name === "agntpymt_list_agents") {
-        const agentId = resolveAgentId(a);
+        const agentId = await resolveAgentId(a);
         const result = await mcpGetAgentPolicy(agentId);
         return { content: [{ type: "text", text: JSON.stringify(result, null, 2) }] };
       }

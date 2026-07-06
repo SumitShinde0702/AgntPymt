@@ -12,8 +12,8 @@ export function AuthControls({ variant = "dark" }: { variant?: "dark" | "light" 
 
   const signUpBtn =
     variant === "dark"
-      ? "rounded-lg bg-brand-600 px-4 py-2 text-sm font-medium text-white hover:bg-brand-500"
-      : "rounded-lg bg-brand-600 px-4 py-2 text-sm font-medium text-white hover:bg-brand-700";
+      ? "btn-primary"
+      : "btn-primary";
 
   return (
     <div className="flex items-center gap-3">

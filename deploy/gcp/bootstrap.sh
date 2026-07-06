@@ -37,36 +37,12 @@ DB_USER="agntpymt"
 echo "==> Enabling APIs…"
 
 gcloud services enable \
-
-  run.googleapis.com \
-
-  artifactregistry.googleapis.com \
-
-  cloudbuild.googleapis.com \
-
   secretmanager.googleapis.com \
-
   storage.googleapis.com \
-
   sqladmin.googleapis.com \
-
   servicenetworking.googleapis.com \
-
+  compute.googleapis.com \
   --project="$PROJECT_ID"
-
-
-
-echo "==> Artifact Registry…"
-
-gcloud artifacts repositories create "$REPO" \
-
-  --repository-format=docker \
-
-  --location="$REGION" \
-
-  --project="$PROJECT_ID" 2>/dev/null || true
-
-
 
 echo "==> GCS profile bucket…"
 
@@ -166,7 +142,7 @@ create_secret agntpymt-openai-key " "
 
 
 
-echo "==> IAM: Cloud Run → Cloud SQL + GCS…"
+echo "==> IAM: VM default SA → Cloud SQL + GCS…"
 
 PROJECT_NUMBER=$(gcloud projects describe "$PROJECT_ID" --format='value(projectNumber)')
 
@@ -196,10 +172,7 @@ echo "  Profile bucket:  gs://${BUCKET}"
 
 echo ""
 
-echo "Deploy:"
-
-echo "  gcloud builds submit --config deploy/gcp/cloudbuild.yaml \\"
-
-echo "    --substitutions=_VITE_CLERK_PUBLISHABLE_KEY=pk_test_...,_SQL_INSTANCE=${CONN_NAME}"
+echo "Deploy the app on your VM:"
+echo "  cd /opt/agntpymt && git pull && bash deploy/vm/deploy.sh"
 
 

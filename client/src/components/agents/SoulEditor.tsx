@@ -50,7 +50,7 @@ export function SoulEditor({ agentId, initialSoul, onSaved }: Props) {
           type="button"
           onClick={() => void save()}
           disabled={saving}
-          className="rounded-lg bg-brand-600 px-4 py-2 text-sm font-medium text-white hover:bg-brand-700 disabled:opacity-50"
+          className="btn-primary disabled:opacity-50"
         >
           {saving ? "Saving…" : "Save SOUL"}
         </button>

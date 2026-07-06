@@ -60,9 +60,11 @@ For full per-agent runtime isolation later: one gateway per org, subprocess per 
 
 See `docs/hermes-mcp.example.json` for a manual MCP reference (AgntPymt auto-writes this into each agent profile).
 
-## GCP deploy
+## Production deploy
 
-See [`deploy/gcp/README.md`](deploy/gcp/README.md) — Cloud Run + **Cloud SQL PostgreSQL** (Singapore `asia-southeast1`) + GCS profiles + Hermes VM.
+Manual deploy on a VM (Docker): [`deploy/vm/README.md`](deploy/vm/README.md)
+
+Optional GCP infra (Cloud SQL, GCS, Hermes VM): [`deploy/gcp/README.md`](deploy/gcp/README.md)
 
 ## Demo flows
 

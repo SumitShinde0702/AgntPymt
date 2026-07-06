@@ -4,7 +4,7 @@ type Props = {
   title: string;
   value: string;
   icon: "wallet" | "bot" | "clock" | "chart";
-  tone?: "violet" | "green" | "yellow" | "blue";
+  tone?: "brand" | "green" | "yellow" | "blue";
 };
 
 const icons = {
@@ -15,13 +15,13 @@ const icons = {
 };
 
 const tones = {
-  violet: "bg-brand-50 text-brand-600",
+  brand: "icon-well",
   green: "bg-emerald-50 text-emerald-600",
   yellow: "bg-amber-50 text-amber-600",
-  blue: "bg-blue-50 text-blue-600",
+  blue: "bg-sky-50 text-sky-600",
 };
 
-export function KpiCard({ title, value, icon, tone = "violet" }: Props) {
+export function KpiCard({ title, value, icon, tone = "brand" }: Props) {
   const Icon = icons[icon];
   return (
     <div className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">

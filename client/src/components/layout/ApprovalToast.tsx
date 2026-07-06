@@ -72,7 +72,7 @@ export function ApprovalToast() {
             <p className="mt-0.5 text-sm text-slate-600">{toast.message}</p>
             <Link
               to={toast.runId ? `/dashboard?run=${toast.runId}` : "/dashboard"}
-              className="mt-2 inline-block text-sm font-medium text-brand-600 hover:underline"
+              className="mt-2 inline-block text-sm link-primary"
             >
               Open chat to approve →
             </Link>

@@ -62,7 +62,7 @@ export function NegotiationRulesEditor({ agentId, policy, onSaved }: Props) {
         type="button"
         onClick={() => void save()}
         disabled={saving}
-        className="rounded-lg bg-brand-600 px-3 py-1.5 text-xs font-medium text-white hover:bg-brand-700 disabled:opacity-50"
+        className="btn-primary-sm disabled:opacity-50"
       >
         {saving ? "Saving…" : "Save rules"}
       </button>

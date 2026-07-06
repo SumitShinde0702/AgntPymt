@@ -11,6 +11,7 @@ import {
   Lock,
 } from "lucide-react";
 import { AuthControls } from "../components/auth/AuthControls";
+import { Logo } from "../components/brand/Logo";
 
 const features = [
   {
@@ -64,15 +65,7 @@ export function LandingPage() {
     <div className="min-h-screen bg-slate-950 text-white">
       <header className="border-b border-white/10">
         <div className="mx-auto flex max-w-6xl items-center justify-between px-6 py-5">
-          <div className="flex items-center gap-3">
-            <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-brand-600 text-lg font-bold">
-              A
-            </div>
-            <div>
-              <div className="text-sm font-semibold">AgntPymt</div>
-              <div className="text-xs text-slate-400">Agent Payments Control Plane</div>
-            </div>
-          </div>
+          <Logo className="h-10 w-auto" />
           <div className="flex items-center gap-3">
             <AuthControls />
             {clerkEnabled ? (
@@ -80,7 +73,7 @@ export function LandingPage() {
                 <SignedIn>
                   <Link
                     to="/dashboard"
-                    className="rounded-lg bg-brand-600 px-4 py-2 text-sm font-medium text-white transition hover:bg-brand-500"
+                    className="btn-primary"
                   >
                     Dashboard
                   </Link>
@@ -88,7 +81,7 @@ export function LandingPage() {
                 <SignedOut>
                   <Link
                     to="/sign-in"
-                    className="rounded-lg bg-brand-600 px-4 py-2 text-sm font-medium text-white transition hover:bg-brand-500"
+                    className="btn-primary"
                   >
                     Launch demo
                   </Link>
@@ -97,7 +90,7 @@ export function LandingPage() {
             ) : (
               <Link
                 to="/dashboard"
-                className="rounded-lg bg-brand-600 px-4 py-2 text-sm font-medium text-white transition hover:bg-brand-500"
+                className="btn-primary"
               >
                 Launch demo
               </Link>
@@ -108,15 +101,15 @@ export function LandingPage() {
 
       <main>
         <section className="relative overflow-hidden px-6 pb-20 pt-16">
-          <div className="pointer-events-none absolute inset-0 bg-[radial-gradient(ellipse_at_top,_var(--tw-gradient-stops))] from-brand-600/20 via-transparent to-transparent" />
+          <div className="pointer-events-none absolute inset-0 bg-[radial-gradient(ellipse_at_top,_var(--tw-gradient-stops))] from-brand-500/20 via-transparent to-transparent" />
           <div className="relative mx-auto max-w-4xl text-center">
-            <div className="mb-6 inline-flex items-center gap-2 rounded-full border border-brand-500/30 bg-brand-600/10 px-4 py-1.5 text-sm text-brand-100">
+            <div className="mb-6 inline-flex items-center gap-2 rounded-full border border-brand-500/30 bg-brand-500/10 px-4 py-1.5 text-sm text-brand-100">
               <GitBranch className="h-4 w-4" />
               Enterprise governance for autonomous AI agents
             </div>
             <h1 className="text-4xl font-bold tracking-tight sm:text-5xl lg:text-6xl">
               Let agents spend money.
-              <span className="mt-2 block bg-gradient-to-r from-brand-400 to-violet-300 bg-clip-text text-transparent">
+              <span className="mt-2 block bg-gradient-to-r from-brand-400 to-brand-200 bg-clip-text text-transparent">
                 Keep humans in control.
               </span>
             </h1>
@@ -127,7 +120,7 @@ export function LandingPage() {
             <div className="mt-10 flex flex-col items-center justify-center gap-4 sm:flex-row">
               <Link
                 to="/dashboard"
-                className="inline-flex items-center gap-2 rounded-xl bg-brand-600 px-6 py-3 text-base font-semibold text-white shadow-lg shadow-brand-600/25 transition hover:bg-brand-500"
+                className="btn-primary-lg"
               >
                 Try the live demo
                 <ArrowRight className="h-5 w-5" />
@@ -166,7 +159,7 @@ export function LandingPage() {
                   key={title}
                   className="rounded-2xl border border-white/10 bg-slate-900 p-6 transition hover:border-brand-500/30"
                 >
-                  <div className="mb-4 flex h-11 w-11 items-center justify-center rounded-xl bg-brand-600/20 text-brand-400">
+                  <div className="mb-4 flex h-11 w-11 items-center justify-center rounded-xl bg-brand-500/20 text-brand-400">
                     <Icon className="h-5 w-5" />
                   </div>
                   <h3 className="font-semibold text-white">{title}</h3>
@@ -189,7 +182,7 @@ export function LandingPage() {
                   key={flow.title}
                   className="flex gap-5 rounded-2xl border border-white/10 bg-slate-900/80 p-6"
                 >
-                  <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-brand-600/20 text-sm font-bold text-brand-400">
+                  <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-brand-500/20 text-sm font-bold text-brand-400">
                     {i + 1}
                   </div>
                   <div>
@@ -225,7 +218,7 @@ export function LandingPage() {
             </p>
             <Link
               to="/dashboard"
-              className="mt-8 inline-flex items-center gap-2 rounded-xl bg-brand-600 px-8 py-3.5 text-base font-semibold text-white shadow-lg shadow-brand-600/25 transition hover:bg-brand-500"
+              className="btn-primary-lg mt-8 px-8 py-3.5"
             >
               Launch demo dashboard
               <ArrowRight className="h-5 w-5" />

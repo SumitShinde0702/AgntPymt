@@ -6,8 +6,101 @@
   font-family: Inter, system-ui, sans-serif;
   color: #111827;
   background: #f8fafc;
+
+  /* AgntPymt brand — logo navy + cyan */
+  --brand-cyan: #00a8e8;
+  --brand-cyan-dark: #0089be;
+  --brand-navy: #0b2d5c;
+  --brand-navy-mid: #004b6a;
 }
 
 body {
   margin: 0;
+}
+
+@layer components {
+  .btn-primary {
+    @apply inline-flex items-center justify-center gap-2 rounded-lg px-4 py-2 text-sm font-medium text-white shadow-sm transition-colors disabled:cursor-not-allowed disabled:opacity-50;
+    background-color: var(--brand-cyan);
+  }
+  .btn-primary:hover:not(:disabled) {
+    background-color: var(--brand-cyan-dark);
+  }
+  .btn-primary:active:not(:disabled) {
+    background-color: var(--brand-navy-mid);
+  }
+
+  .btn-primary-sm {
+    @apply inline-flex items-center justify-center gap-1.5 rounded-lg px-3 py-1.5 text-sm font-medium text-white shadow-sm transition-colors disabled:cursor-not-allowed disabled:opacity-50;
+    background-color: var(--brand-cyan);
+  }
+  .btn-primary-sm:hover:not(:disabled) {
+    background-color: var(--brand-cyan-dark);
+  }
+
+  .btn-primary-xs {
+    @apply inline-flex items-center justify-center rounded-lg px-3 py-1 text-xs font-medium text-white transition-colors disabled:cursor-not-allowed disabled:opacity-50;
+    background-color: var(--brand-cyan);
+  }
+  .btn-primary-xs:hover:not(:disabled) {
+    background-color: var(--brand-cyan-dark);
+  }
+
+  .btn-primary-lg {
+    @apply inline-flex items-center justify-center gap-2 rounded-xl px-6 py-3 text-base font-semibold text-white shadow-lg transition-colors;
+    background-color: var(--brand-cyan);
+    box-shadow: 0 10px 15px -3px rgb(0 168 232 / 0.25);
+  }
+  .btn-primary-lg:hover {
+    background-color: var(--brand-cyan-dark);
+  }
+
+  .link-primary {
+    @apply font-medium hover:underline;
+    color: var(--brand-cyan);
+  }
+  .link-primary:hover {
+    color: var(--brand-cyan-dark);
+  }
+
+  .text-accent-cyan {
+    color: var(--brand-cyan);
+  }
+
+  .text-accent-navy {
+    color: var(--brand-navy);
+  }
+
+  .bg-accent-cyan {
+    background-color: var(--brand-cyan);
+  }
+
+  .bg-accent-navy {
+    background-color: var(--brand-navy);
+  }
+
+  .border-accent-cyan {
+    border-color: var(--brand-cyan);
+  }
+
+  .nav-active {
+    border-left-width: 4px;
+    border-left-color: var(--brand-cyan);
+    background-color: #f1f5f9;
+    color: var(--brand-navy);
+  }
+
+  .icon-well {
+    @apply rounded-xl bg-slate-100;
+    color: var(--brand-cyan);
+  }
+
+  .icon-well-round {
+    @apply flex items-center justify-center rounded-full bg-slate-100;
+    color: var(--brand-cyan);
+  }
+
+  .badge-muted {
+    @apply rounded-full bg-slate-100 px-3 py-1 text-xs font-medium text-slate-800;
+  }
 }

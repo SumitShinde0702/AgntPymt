@@ -15,6 +15,7 @@ import { useEffect, useState } from "react";
 import { api, type HealthData, type DashboardData } from "../../lib/api";
 import { AuthControls } from "../auth/AuthControls";
 import { ApprovalToast } from "./ApprovalToast";
+import { Logo } from "../brand/Logo";
 
 const nav = [
   { to: "/dashboard", label: "Dashboard", icon: LayoutDashboard },
@@ -55,14 +56,8 @@ export function AppLayout() {
   return (
     <div className="flex min-h-screen bg-slate-50">
       <aside className="flex w-64 flex-col border-r border-slate-200 bg-white">
-        <div className="flex items-center gap-3 border-b border-slate-200 px-5 py-5">
-          <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-brand-600 text-lg font-bold text-white">
-            A
-          </div>
-          <div>
-            <div className="text-sm font-semibold text-slate-900">AgntPymt</div>
-            <div className="text-xs text-slate-500">MVP DEMO</div>
-          </div>
+        <div className="flex items-center border-b border-slate-200 px-5 py-5">
+          <Logo className="h-9 w-auto" />
         </div>
 
         <nav className="flex-1 space-y-1 p-3">
@@ -72,16 +67,14 @@ export function AppLayout() {
               to={to}
               className={({ isActive }) =>
                 `flex items-center gap-3 rounded-lg px-3 py-2.5 text-sm font-medium transition ${
-                  isActive
-                    ? "border-l-4 border-brand-600 bg-brand-50 text-brand-700"
-                    : "text-slate-600 hover:bg-slate-50"
+                  isActive ? "nav-active" : "text-slate-600 hover:bg-slate-50"
                 }`
               }
             >
               <Icon className="h-4 w-4" />
               <span className="flex-1">{label}</span>
               {badge && approvalCount > 0 && (
-                <span className="rounded-full bg-brand-600 px-2 py-0.5 text-xs text-white">{approvalCount}</span>
+                <span className="rounded-full bg-accent-cyan px-2 py-0.5 text-xs text-white">{approvalCount}</span>
               )}
             </NavLink>
           ))}
@@ -150,7 +143,7 @@ export function AppLayout() {
               </span>
             )}
             {!health?.simulatePayments && health?.paymentMode === "x402" && (
-              <span className="rounded-full bg-violet-100 px-3 py-1 text-xs font-medium text-violet-800">
+              <span className="badge-muted">
                 x402 · {health.network}
               </span>
             )}
@@ -168,7 +161,7 @@ export function AppLayout() {
         </main>
 
         <footer className="flex items-center justify-between border-t border-slate-200 bg-white px-6 py-3 text-xs text-slate-500">
-          <span>AgntPymt MVP Demo v0.1.0</span>
+          <span>v0.1.0</span>
           <span>Built with care for AI Agents</span>
         </footer>
       </div>

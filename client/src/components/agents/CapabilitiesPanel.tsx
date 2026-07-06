@@ -125,7 +125,7 @@ export function CapabilitiesPanel({ agentId, capabilities, onChanged }: Props) {
               setEditingSkill(null);
               setSkillDraft({ name: "", description: "", body: "" });
             }}
-            className="inline-flex items-center gap-1 text-xs font-medium text-brand-600 hover:underline"
+            className="link-primary text-xs"
           >
             <Plus className="h-3.5 w-3.5" />
             Add skill
@@ -181,7 +181,7 @@ export function CapabilitiesPanel({ agentId, capabilities, onChanged }: Props) {
               type="button"
               onClick={() => void saveSkill()}
               disabled={busy || !skillDraft.name.trim()}
-              className="rounded bg-brand-600 px-3 py-1.5 text-xs font-medium text-white"
+              className="btn-primary-xs"
             >
               Save
             </button>
@@ -205,7 +205,7 @@ export function CapabilitiesPanel({ agentId, capabilities, onChanged }: Props) {
           <button
             type="button"
             onClick={() => setMcpForm(true)}
-            className="inline-flex items-center gap-1 text-xs font-medium text-brand-600 hover:underline"
+            className="link-primary text-xs"
           >
             <Plus className="h-3.5 w-3.5" />
             Add MCP
@@ -218,7 +218,7 @@ export function CapabilitiesPanel({ agentId, capabilities, onChanged }: Props) {
                 <div className="flex items-center gap-2">
                   <span className="text-sm font-medium text-slate-900">{m.name}</span>
                   {m.protected && (
-                    <span className="rounded bg-violet-50 px-1.5 py-0.5 text-[10px] font-medium text-violet-700">
+                    <span className="rounded bg-slate-100 px-1.5 py-0.5 text-[10px] font-medium text-accent-navy">
                       protected
                     </span>
                   )}
@@ -275,7 +275,7 @@ export function CapabilitiesPanel({ agentId, capabilities, onChanged }: Props) {
               type="button"
               onClick={() => void saveMcp()}
               disabled={busy || !mcpDraft.name?.trim()}
-              className="rounded bg-brand-600 px-3 py-1.5 text-xs font-medium text-white"
+              className="btn-primary-xs"
             >
               Save
             </button>

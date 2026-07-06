@@ -62,22 +62,12 @@ function Set-Secret([string]$Name, [string]$Value) {
 
 Write-Host "==> Enabling APIs..."
 gcloud services enable `
-    run.googleapis.com `
-    artifactregistry.googleapis.com `
-    cloudbuild.googleapis.com `
     secretmanager.googleapis.com `
     storage.googleapis.com `
     sqladmin.googleapis.com `
     servicenetworking.googleapis.com `
+    compute.googleapis.com `
     --project=$PROJECT_ID
-
-Write-Host "==> Artifact Registry..."
-Invoke-GcloudQuiet @(
-    "artifacts", "repositories", "create", $REPO,
-    "--repository-format=docker",
-    "--location=$REGION",
-    "--project=$PROJECT_ID"
-)
 
 Write-Host "==> GCS profile bucket..."
 Invoke-GcloudQuiet @("storage", "buckets", "create", "gs://$BUCKET/", "-p", $PROJECT_ID, "-l", $REGION)
@@ -124,7 +114,7 @@ Set-Secret "agntpymt-hermes-api-key" "change-me-prod"
 Set-Secret "agntpymt-mcp-key" (New-RandomHex)
 Set-Secret "agntpymt-openai-key" " "
 
-Write-Host "==> IAM: Cloud Run -> Cloud SQL + GCS..."
+Write-Host "==> IAM: VM default SA -> Cloud SQL + GCS..."
 $PROJECT_NUMBER = gcloud projects describe $PROJECT_ID --format="value(projectNumber)"
 $CR_SA = "${PROJECT_NUMBER}-compute@developer.gserviceaccount.com"
 
@@ -144,6 +134,5 @@ Write-Host "  Region:          $REGION"
 Write-Host "  Cloud SQL:       $SQL_INSTANCE ($CONN_NAME)"
 Write-Host "  Profile bucket:  gs://$BUCKET"
 Write-Host ""
-Write-Host "Deploy:"
-Write-Host ('  gcloud builds submit --config deploy/gcp/cloudbuild.yaml \')
-Write-Host "    --substitutions=_VITE_CLERK_PUBLISHABLE_KEY=pk_test_...,_SQL_INSTANCE=$CONN_NAME"
+Write-Host "Deploy the app on your VM:"
+Write-Host "  cd /opt/agntpymt && git pull && bash deploy/vm/deploy.sh"

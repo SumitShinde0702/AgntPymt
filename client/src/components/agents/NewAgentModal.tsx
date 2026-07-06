@@ -3,7 +3,7 @@ import { Sparkles, X } from "lucide-react";
 import { api, type Agent } from "../../lib/api";
 
 const colorMap: Record<string, string> = {
-  violet: "bg-violet-100 text-violet-700 ring-violet-300",
+  violet: "bg-slate-100 text-accent-navy ring-slate-300",
   blue: "bg-blue-100 text-blue-700 ring-blue-300",
   green: "bg-emerald-100 text-emerald-700 ring-emerald-300",
   orange: "bg-orange-100 text-orange-700 ring-orange-300",
@@ -159,8 +159,8 @@ export function NewAgentModal({ open, onClose, onCreated }: Props) {
         </div>
 
         <form onSubmit={(e) => void handleSubmit(e)} className="space-y-5 p-5">
-          <div className="rounded-xl border border-brand-100 bg-brand-50/50 p-4">
-            <div className="mb-2 flex items-center gap-2 text-sm font-medium text-brand-800">
+          <div className="rounded-xl border border-slate-200 bg-slate-50 p-4">
+            <div className="mb-2 flex items-center gap-2 text-sm font-medium text-accent-navy">
               <Sparkles className="h-4 w-4" />
               Describe your agent
             </div>
@@ -181,7 +181,7 @@ export function NewAgentModal({ open, onClose, onCreated }: Props) {
                   key={ex}
                   type="button"
                   onClick={() => setAiPrompt(ex)}
-                  className="rounded-full border border-slate-200 bg-white px-2.5 py-1 text-xs text-slate-600 hover:border-brand-300 hover:text-brand-700"
+                  className="rounded-full border border-slate-200 bg-white px-2.5 py-1 text-xs text-slate-600 hover:border-accent-cyan hover:text-accent-navy"
                 >
                   {ex.length > 42 ? `${ex.slice(0, 42)}…` : ex}
                 </button>
@@ -191,7 +191,7 @@ export function NewAgentModal({ open, onClose, onCreated }: Props) {
               type="button"
               onClick={() => void generateFromAi()}
               disabled={generating || !aiPrompt.trim()}
-              className="inline-flex items-center gap-1.5 rounded-lg bg-brand-600 px-3 py-1.5 text-sm font-medium text-white hover:bg-brand-700 disabled:opacity-50"
+              className="btn-primary-sm disabled:opacity-50"
             >
               <Sparkles className="h-3.5 w-3.5" />
               {generating ? "Generating…" : "Auto-fill with AI"}
@@ -227,7 +227,7 @@ export function NewAgentModal({ open, onClose, onCreated }: Props) {
                     onClick={() => update("category", cat)}
                     className={`rounded-full px-2.5 py-1 text-xs font-medium capitalize transition ${
                       form.category === cat
-                        ? "bg-brand-600 text-white"
+                        ? "bg-accent-cyan text-white"
                         : "border border-slate-200 text-slate-600 hover:border-brand-300"
                     }`}
                   >
@@ -316,7 +316,7 @@ export function NewAgentModal({ open, onClose, onCreated }: Props) {
             <button
               type="submit"
               disabled={submitting || !form.name.trim() || !form.category.trim()}
-              className="rounded-lg bg-brand-600 px-4 py-2 text-sm font-medium text-white hover:bg-brand-700 disabled:opacity-50"
+              className="btn-primary disabled:opacity-50"
             >
               {submitting ? "Creating…" : "Create Agent"}
             </button>

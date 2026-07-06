@@ -51,9 +51,9 @@ export function TreasuryCard({ treasury, onUpdate }: Props) {
   }
 
   return (
-    <div className="rounded-2xl border-2 border-brand-200 bg-gradient-to-br from-brand-50 to-white p-6 shadow-sm">
+    <div className="rounded-2xl border-2 border-slate-200 bg-gradient-to-br from-slate-50 to-white p-6 shadow-sm">
       <div className="mb-4 flex items-center gap-2">
-        <Crown className="h-5 w-5 text-brand-600" />
+        <Crown className="h-5 w-5 text-accent-cyan" />
         <h2 className="text-lg font-semibold text-slate-900">Treasury wallet (God wallet)</h2>
       </div>
       <p className="mb-4 text-sm text-slate-600">
@@ -106,7 +106,7 @@ export function TreasuryCard({ treasury, onUpdate }: Props) {
           <button
             type="button"
             onClick={() => void linkTreasury()}
-            className="rounded-lg bg-brand-600 px-4 py-2 text-sm font-medium text-white hover:bg-brand-700"
+            className="btn-primary"
           >
             Set as treasury
           </button>

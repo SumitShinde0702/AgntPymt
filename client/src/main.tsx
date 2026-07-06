@@ -22,7 +22,15 @@ const app = (
 root.render(
   <StrictMode>
     {clerkKey ? (
-      <ClerkProvider publishableKey={clerkKey}>
+      <ClerkProvider
+        publishableKey={clerkKey}
+        appearance={{
+          variables: {
+            colorPrimary: "#00A8E8",
+            colorTextOnPrimaryBackground: "#ffffff",
+          },
+        }}
+      >
         <ApiAuthProvider>{app}</ApiAuthProvider>
       </ClerkProvider>
     ) : (

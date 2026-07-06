@@ -4,8 +4,75 @@ import { getDb, schema, closeDb } from "./index.js";
 const ORG_ID = "org_demo";
 const now = () => new Date().toISOString();
 
+const VENDOR_ROWS = [
+  {
+    id: "vendor_marketdata",
+    name: "MarketData Co. Agent",
+    category: "research",
+    description: "Premium market data and sector reports",
+    listPriceUsd: 0.02,
+    counterPriceUsd: 0.01,
+    negotiationStyle: "single_round",
+  },
+  {
+    id: "vendor_expedia",
+    name: "Expedia Agent",
+    category: "travel",
+    description: "Flight and hotel bookings",
+    listPriceUsd: 0.04,
+    counterPriceUsd: 0.02,
+    negotiationStyle: "single_round",
+  },
+  {
+    id: "vendor_amazon",
+    name: "Amazon Business Agent",
+    category: "procurement",
+    description: "Office supplies and equipment",
+    listPriceUsd: 0.01,
+    counterPriceUsd: null,
+    negotiationStyle: "instant",
+  },
+  {
+    id: "vendor_aws",
+    name: "AWS Vendor Agent",
+    category: "cloud",
+    description: "Cloud infrastructure invoices",
+    listPriceUsd: 0.1,
+    counterPriceUsd: 0.08,
+    negotiationStyle: "single_round",
+  },
+  {
+    id: "vendor_cloudbatch",
+    name: "CloudBatch Vendor Agent",
+    category: "compute",
+    description: "Batch compute and forecasting jobs",
+    listPriceUsd: 0.06,
+    counterPriceUsd: 0.04,
+    negotiationStyle: "single_round",
+  },
+  {
+    id: "vendor_openmarket",
+    name: "OpenMarket Agent",
+    category: "generic",
+    description: "General marketplace fallback",
+    listPriceUsd: 0.01,
+    counterPriceUsd: null,
+    negotiationStyle: "instant",
+  },
+] as const;
+
+async function ensureVendors(db: ReturnType<typeof getDb>) {
+  await db.insert(schema.vendors).values([...VENDOR_ROWS]);
+}
+
 async function seed() {
   const db = getDb();
+
+  const existingVendors = await db.select({ id: schema.vendors.id }).from(schema.vendors).limit(1);
+  if (existingVendors.length === 0) {
+    await ensureVendors(db);
+    console.log("Seeded vendors (were missing).");
+  }
 
   const existing = await db
     .select({ id: schema.organizations.id })
@@ -14,7 +81,7 @@ async function seed() {
     .limit(1);
 
   if (existing.length > 0) {
-    console.log("Demo data already seeded, skipping.");
+    console.log("Demo org already seeded, skipping agents/approvals.");
     return;
   }
 
@@ -112,62 +179,7 @@ const POLICY_RULES: Record<string, string> = {
     });
   }
 
-  await db.insert(schema.vendors).values([
-    {
-      id: "vendor_marketdata",
-      name: "MarketData Co. Agent",
-      category: "research",
-      description: "Premium market data and sector reports",
-      listPriceUsd: 0.02,
-      counterPriceUsd: 0.01,
-      negotiationStyle: "single_round",
-    },
-    {
-      id: "vendor_expedia",
-      name: "Expedia Agent",
-      category: "travel",
-      description: "Flight and hotel bookings",
-      listPriceUsd: 0.04,
-      counterPriceUsd: 0.02,
-      negotiationStyle: "single_round",
-    },
-    {
-      id: "vendor_amazon",
-      name: "Amazon Business Agent",
-      category: "procurement",
-      description: "Office supplies and equipment",
-      listPriceUsd: 0.01,
-      counterPriceUsd: null,
-      negotiationStyle: "instant",
-    },
-    {
-      id: "vendor_aws",
-      name: "AWS Vendor Agent",
-      category: "cloud",
-      description: "Cloud infrastructure invoices",
-      listPriceUsd: 0.1,
-      counterPriceUsd: 0.08,
-      negotiationStyle: "single_round",
-    },
-    {
-      id: "vendor_cloudbatch",
-      name: "CloudBatch Vendor Agent",
-      category: "compute",
-      description: "Batch compute and forecasting jobs",
-      listPriceUsd: 0.06,
-      counterPriceUsd: 0.04,
-      negotiationStyle: "single_round",
-    },
-    {
-      id: "vendor_openmarket",
-      name: "OpenMarket Agent",
-      category: "generic",
-      description: "General marketplace fallback",
-      listPriceUsd: 0.01,
-      counterPriceUsd: null,
-      negotiationStyle: "instant",
-    },
-  ]);
+  await ensureVendors(db);
 
   await db.insert(schema.approvals).values([
     {
