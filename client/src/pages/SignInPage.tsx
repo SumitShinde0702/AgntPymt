@@ -1,9 +1,20 @@
 import { SignIn } from "@clerk/clerk-react";
+import { AuthShell, clerkAppearance } from "../components/auth/AuthShell";
 
 export function SignInPage() {
   return (
-    <div className="flex min-h-screen items-center justify-center bg-slate-50 px-4">
-      <SignIn routing="path" path="/sign-in" signUpUrl="/sign-up" />
-    </div>
+    <AuthShell
+      title="Welcome back"
+      subtitle="Sign in to manage agents, wallets, and settlement approvals."
+    >
+      <SignIn
+        routing="path"
+        path="/sign-in"
+        signUpUrl="/sign-up"
+        forceRedirectUrl="/dashboard"
+        fallbackRedirectUrl="/dashboard"
+        appearance={clerkAppearance}
+      />
+    </AuthShell>
   );
 }

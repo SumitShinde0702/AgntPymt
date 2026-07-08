@@ -1,9 +1,20 @@
 import { SignUp } from "@clerk/clerk-react";
+import { AuthShell, clerkAppearance } from "../components/auth/AuthShell";
 
 export function SignUpPage() {
   return (
-    <div className="flex min-h-screen items-center justify-center bg-slate-50 px-4">
-      <SignUp routing="path" path="/sign-up" signInUrl="/sign-in" />
-    </div>
+    <AuthShell
+      title="Create your account"
+      subtitle="Get started with agent wallets, policies, and x402 payments."
+    >
+      <SignUp
+        routing="path"
+        path="/sign-up"
+        signInUrl="/sign-in"
+        forceRedirectUrl="/dashboard"
+        fallbackRedirectUrl="/dashboard"
+        appearance={clerkAppearance}
+      />
+    </AuthShell>
   );
 }

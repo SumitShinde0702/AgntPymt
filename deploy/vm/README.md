@@ -21,25 +21,53 @@ cp /opt/agntpymt/.env.example /opt/agntpymt/.env
 nano /opt/agntpymt/.env   # set DATABASE_URL, Clerk, keys, etc.
 
 # First deploy
-cd /opt/agntpymt
+cd /opt/agntpymt   # or ~/AgntPymt
 bash deploy/vm/deploy.sh
 ```
 
-Open firewall for port `8080` (or put nginx/Caddy in front on 80/443).
+`deploy.sh` puts the app on Docker network `agntpymt-net` and does **not** bind host ports 80/443 (those belong to Caddy for HTTPS).
+
+### HTTPS with Caddy (Docker, no sudo)
+
+```bash
+docker network create agntpymt-net 2>/dev/null || true
+
+# App is started by deploy.sh on agntpymt-net (port 8080 inside network only)
+
+cat > ~/Caddyfile <<'EOF'
+demo.agntpymt.com {
+  reverse_proxy agntpymt:8080
+}
+EOF
+
+docker run -d \
+  --name caddy \
+  --restart unless-stopped \
+  --network agntpymt-net \
+  -p 80:80 \
+  -p 443:443 \
+  -v ~/Caddyfile:/etc/caddy/Caddyfile \
+  -v caddy_data:/data \
+  -v caddy_config:/config \
+  caddy:2
+```
+
+Open GCP firewall for `tcp:80` and `tcp:443`. Point DNS to the VM.
 
 If the GitHub repo is **private**, add a [deploy key](https://docs.github.com/en/authentication/connecting-to-github-with-ssh/managing-deploy-keys) on the VM so `git pull` works.
 
 ## Deploy updates
 
-SSH into the VM, pull, and rebuild:
+SSH into the VM, pull, and rebuild (or push to `main` for GitHub Actions):
 
 ```bash
-cd /opt/agntpymt
+cd ~/AgntPymt
 git pull
 bash deploy/vm/deploy.sh
 ```
 
-Logs: `docker logs -f agntpymt`
+Logs: `docker logs -f agntpymt`  
+Site: `https://demo.agntpymt.com`
 
 ## Optional: GCP infra
 
