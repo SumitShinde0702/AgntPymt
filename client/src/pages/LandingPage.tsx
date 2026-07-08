@@ -115,7 +115,7 @@ export function LandingPage() {
             </h1>
             <p className="mx-auto mt-6 max-w-2xl text-lg text-slate-400">
               AgntPymt is the payments and policy layer for AI agents — wallet provisioning,
-              spending limits, approval workflows, and x402 micropayments on Base.
+              spending limits, approval workflows, and x402 payments on Base.
             </p>
             <div className="mt-10 flex flex-col items-center justify-center gap-4 sm:flex-row">
               <Link
