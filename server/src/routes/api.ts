@@ -12,7 +12,7 @@ import {
   provisionAgentWallet,
   setTreasuryWallet,
 } from "../services/agent-wallet.js";
-import { suggestAgentProfile } from "../services/agent-profile-ai.js";
+import { suggestAgentProfile, suggestSoulProfile } from "../services/agent-profile-ai.js";
 import {
   createSkill,
   deleteMcpServer,
@@ -352,6 +352,30 @@ apiRouter.use("/agents/:id/erc8004", erc8004Router);
 apiRouter.use("/vendors/:id/erc8004", vendorErc8004Router);
 
 const soulSchema = z.object({ soul: z.string() });
+
+const suggestSoulSchema = z.object({
+  prompt: z.string().min(1),
+});
+
+apiRouter.post("/agents/:id/hermes/soul/suggest", async (req, res) => {
+  const parsed = suggestSoulSchema.safeParse(req.body);
+  if (!parsed.success) return res.status(400).json(parsed.error.flatten());
+
+  const orgId = getOrgId(req);
+  const agent = await loadOrgAgent(req.params.id, orgId);
+  if (!agent) return res.status(404).json({ error: "Not found" });
+
+  try {
+    const suggestion = await suggestSoulProfile({
+      prompt: parsed.data.prompt,
+      agentName: agent.name,
+      category: agent.category,
+    });
+    res.json({ ...suggestion, aiEnabled: Boolean(env.openaiApiKey) });
+  } catch (err) {
+    res.status(400).json({ error: err instanceof Error ? err.message : "Failed" });
+  }
+});
 
 apiRouter.put("/agents/:id/hermes/soul", async (req, res) => {
   const parsed = soulSchema.safeParse(req.body);

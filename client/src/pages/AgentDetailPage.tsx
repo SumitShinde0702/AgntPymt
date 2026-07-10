@@ -297,14 +297,17 @@ export function AgentDetailPage() {
           />
           <section className="rounded-2xl border border-slate-200 bg-white p-6 shadow-sm">
             <h2 className="text-lg font-semibold text-slate-900">SOUL.md</h2>
-            <p className="mt-1 text-sm text-slate-600">
-              Agent identity and instructions. Passed to Hermes on each run.
-            </p>
             <div className="mt-4">
               {hermesLoading && !hermes ? (
                 <p className="text-sm text-slate-500">Loading profile…</p>
               ) : hermes ? (
-                <SoulEditor agentId={agentId} initialSoul={hermes.soul} onSaved={loadHermes} />
+                <SoulEditor
+                  agentId={agentId!}
+                  agentName={agent?.name}
+                  category={agent?.category}
+                  initialSoul={hermes.soul}
+                  onSaved={loadHermes}
+                />
               ) : (
                 <p className="text-sm text-slate-500">Could not load Hermes profile</p>
               )}
