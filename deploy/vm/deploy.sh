@@ -50,11 +50,15 @@ RUN_ARGS=(
   --env-file .env
   -e PORT=8080
   -e NODE_ENV=production
+  # Let container reach Hermes on the VM host (:8642)
+  --add-host=host.docker.internal:host-gateway
 )
 
-# Debug-only: map host localhost:PORT -> container 8080 (never bind public 80/443 here)
-if [[ -n "${AGNTPYMT_PUBLISH_PORT:-}" ]]; then
-  RUN_ARGS+=(-p "127.0.0.1:${AGNTPYMT_PUBLISH_PORT}:8080")
+# Always publish localhost:8080 so Hermes on the host can call MCP at http://127.0.0.1:8080/mcp
+# (not public — 127.0.0.1 only). Override with AGNTPYMT_PUBLISH_PORT= to change/disable.
+PUBLISH_PORT="${AGNTPYMT_PUBLISH_PORT:-8080}"
+if [[ "${PUBLISH_PORT}" != "0" && "${PUBLISH_PORT}" != "off" ]]; then
+  RUN_ARGS+=(-p "127.0.0.1:${PUBLISH_PORT}:8080")
 fi
 
 docker run -d "${RUN_ARGS[@]}" agntpymt:latest
@@ -68,3 +72,5 @@ fi
 echo "==> Deployed on network ${NETWORK} (no host :80/:443 binding)."
 echo "    Logs: docker logs -f agntpymt"
 echo "    HTTPS: via Caddy (demo.agntpymt.com) → agntpymt:8080"
+echo "    Hermes: set HERMES_API_URL=http://host.docker.internal:8642 in .env (after setup-hermes.sh)"
+echo "    MCP for Hermes: http://127.0.0.1:${PUBLISH_PORT:-8080}/mcp"

@@ -25,7 +25,43 @@ cd /opt/agntpymt   # or ~/AgntPymt
 bash deploy/vm/deploy.sh
 ```
 
-`deploy.sh` puts the app on Docker network `agntpymt-net` and does **not** bind host ports 80/443 (those belong to Caddy for HTTPS).
+`deploy.sh` puts the app on Docker network `agntpymt-net` and does **not** bind host ports 80/443 (those belong to Caddy for HTTPS). It does publish `127.0.0.1:8080` so Hermes on the host can call MCP.
+
+### Hermes gateway (same VM)
+
+Hermes is the agent runtime. Without it, the console falls back to local simulation.
+
+```bash
+# On the VM — use the same HERMES_API_KEY as in ~/AgntPymt/.env
+export HERMES_API_KEY='your-shared-secret'
+export OPENAI_API_KEY='sk-...'   # or DEEPSEEK_API_KEY
+export AGNTPYMT_API_URL='http://127.0.0.1:8080'
+
+cd ~/AgntPymt
+bash deploy/vm/setup-hermes.sh
+```
+
+Then in `~/AgntPymt/.env`:
+
+```bash
+HERMES_API_URL=http://host.docker.internal:8642
+HERMES_API_KEY=your-shared-secret
+```
+
+Redeploy the app so it picks up the env:
+
+```bash
+bash deploy/vm/deploy.sh
+```
+
+Check:
+
+```bash
+curl -s http://127.0.0.1:8642/health
+docker exec agntpymt wget -qO- http://host.docker.internal:8642/health
+```
+
+Health in the UI should show Hermes online (not “Local mode”).
 
 ### HTTPS with Caddy (Docker, no sudo)
 

@@ -2,7 +2,7 @@ import { useEffect, useRef, useState } from "react";
 import { Link, useSearchParams } from "react-router-dom";
 import { Bot, Play, Plus } from "lucide-react";
 import { api, subscribeRunEvents, type Agent, type RunEvent } from "../../lib/api";
-import { RunChatFeed } from "./RunChatFeed";
+import { RunChatFeed, RUN_IDLE_TIMEOUT_MS } from "./RunChatFeed";
 
 const EXAMPLES = [
   "Buy premium sector research data",
@@ -94,22 +94,6 @@ export function AgentConsole({ agents, onRunComplete, onNewAgent }: Props) {
     ctx.received.value = true;
     setEvents((prev) => mergeEvent(prev, event));
 
-    if (event.step === "hermes_approval") {
-      armTimeout(600_000, () => {
-        setRunError("Waiting for approval timed out — approve or deny in the chat.");
-        ctx.finish();
-      });
-      return;
-    }
-
-    if (event.step === "hermes_approval_granted") {
-      armTimeout(180_000, () => {
-        setRunError("Run timed out after approval — check server logs.");
-        ctx.finish();
-      });
-      return;
-    }
-
     if (
       event.step === "run_completed" ||
       event.step === "payment_pending" ||
@@ -118,7 +102,22 @@ export function AgentConsole({ agents, onRunComplete, onNewAgent }: Props) {
       event.step === "hermes_approval_denied"
     ) {
       ctx.finish();
+      return;
     }
+
+    // Reset idle timer on every event so long Hermes + negotiation runs don't die at 90s.
+    if (event.step === "hermes_approval") {
+      armTimeout(600_000, () => {
+        setRunError("Waiting for approval timed out — approve or deny in the chat.");
+        ctx.finish();
+      });
+      return;
+    }
+
+    armTimeout(RUN_IDLE_TIMEOUT_MS, () => {
+      setRunError("Run timed out — no new events for 5 minutes. Check Hermes / server logs.");
+      ctx.finish();
+    });
   }
 
   async function connectToRun(
@@ -142,13 +141,13 @@ export function AgentConsole({ agents, onRunComplete, onNewAgent }: Props) {
     const abort = new AbortController();
     abortRef.current = abort;
 
-    const defaultMs = opts.awaitingApproval ? 600_000 : 90_000;
+    const defaultMs = opts.awaitingApproval ? 600_000 : RUN_IDLE_TIMEOUT_MS;
     armTimeout(defaultMs, () => {
       if (done) return;
       setRunError(
         opts.awaitingApproval
           ? "Waiting for approval timed out — approve or deny in the chat."
-          : "Run timed out — check server logs and SIMULATE_PAYMENTS setting."
+          : "Run timed out — no new events for 5 minutes. Check Hermes / server logs."
       );
       finish();
     });
@@ -255,9 +254,9 @@ export function AgentConsole({ agents, onRunComplete, onNewAgent }: Props) {
     const abort = new AbortController();
     abortRef.current = abort;
 
-    armTimeout(90_000, () => {
+    armTimeout(RUN_IDLE_TIMEOUT_MS, () => {
       if (done) return;
-      setRunError("Run timed out — check server logs and SIMULATE_PAYMENTS setting.");
+      setRunError("Run timed out — no new events for 5 minutes. Check Hermes / server logs.");
       finish();
     });
 
@@ -418,6 +417,7 @@ export function AgentConsole({ agents, onRunComplete, onNewAgent }: Props) {
         <RunChatFeed
           events={events}
           agentName={agent?.name}
+          live={running}
           onHermesApproval={handleHermesApproval}
         />
       </div>

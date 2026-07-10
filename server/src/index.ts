@@ -8,7 +8,7 @@ import { apiRouter } from "./routes/api.js";
 import { mcpRouter } from "./routes/mcp.js";
 import { apiAuthMiddleware, installClerkMiddleware } from "./middleware/auth.js";
 import { eq, getDb, schema } from "@agntpymt/db";
-import { syncAllProvisionedProfileMcp, syncHermesGatewayMcpConfig, getHermesHomeDir, migrateLegacyHermesProfiles } from "./services/hermes-profile.js";
+import { syncAllProvisionedProfileMcp, syncHermesGatewayMcpConfig, getHermesHomeDir, migrateLegacyHermesProfiles, ensureAllHermesProfiles } from "./services/hermes-profile.js";
 import { mcpHttpRouter } from "./mcp/http-router.js";
 
 async function main() {
@@ -17,6 +17,7 @@ async function main() {
 
   try {
     await migrateLegacyHermesProfiles();
+    const provisionedCount = await ensureAllHermesProfiles(env.orgId);
     const db = getDb();
     const provisioned = await db
       .select({ id: schema.agents.id })
@@ -26,7 +27,9 @@ async function main() {
     const gatewayAgentId = provisioned[0]?.id ?? "";
     await syncHermesGatewayMcpConfig(gatewayAgentId);
     const n = await syncAllProvisionedProfileMcp();
-    console.log(`Synced agntpymt MCP config (${getHermesHomeDir()}/config.yaml, + ${n} agent profile(s))`);
+    console.log(
+      `Synced agntpymt MCP config (${getHermesHomeDir()}/config.yaml, + ${n} agent profile(s); provisioned ${provisionedCount} this boot)`
+    );
   } catch (err) {
     console.warn("Could not sync Hermes MCP config:", err);
   }
