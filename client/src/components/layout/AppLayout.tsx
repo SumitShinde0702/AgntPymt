@@ -60,7 +60,7 @@ export function AppLayout() {
     <div className="flex min-h-screen bg-slate-50">
       <aside className="flex w-64 flex-col border-r border-slate-200 bg-white">
         <div className="flex items-center border-b border-slate-200 px-5 py-5">
-          <Logo className="h-9 w-auto" />
+          <Logo markClassName="h-8 w-8" />
         </div>
 
         <nav className="flex-1 space-y-1 p-3">

@@ -42,7 +42,7 @@ export function AuthShell({
       <div className="pointer-events-none absolute inset-0 bg-[radial-gradient(ellipse_at_bottom_right,_var(--tw-gradient-stops))] from-[#0b2d5c]/80 via-transparent to-transparent" />
 
       <div className="relative z-10 mb-8 flex flex-col items-center text-center">
-        <Logo className="h-12 w-auto" />
+        <Logo variant="dark" markClassName="h-11 w-11" />
         <h1 className="mt-5 text-2xl font-bold tracking-tight text-white sm:text-3xl">{title}</h1>
         <p className="mt-2 max-w-sm text-sm text-slate-400">{subtitle}</p>
       </div>
