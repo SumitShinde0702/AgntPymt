@@ -57,7 +57,10 @@ export type StartHermesRunInput = {
 
 export async function startHermesRun(input: StartHermesRunInput): Promise<string | null> {
   try {
-    const purchaseTask = /buy|purchase|premium|sector research|paid resource/i.test(input.prompt);
+    const purchaseTask =
+      /buy|purchase|premium|sector research|paid resource|order|book|pay\b|invoice/i.test(
+        input.prompt
+      );
     const instructions = [
       input.soulMd.trim(),
       "",
@@ -69,17 +72,24 @@ export async function startHermesRun(input: StartHermesRunInput): Promise<string
       "Never end a purchase task without calling the purchase MCP tool — analysis alone is not enough.",
       "Do not guess prices ($1.50 is wrong). Vendor price comes from the purchase tool result (~$0.01 USDC in demo).",
       "HTTP 402 is x402 payment protocol, not 'auto-approve too low'. Low auto-approve returns pending_approval from the tool, not a chat refusal.",
-      "Negotiate in chat if you want, then call the purchase tool.",
       "If an MCP tool fails, report the failure honestly — never invent past transactions or offer to reuse old session data.",
       "Do not use session_search to skip payment or substitute for agntpymt_initiate_purchase.",
+      "Do not use list_agents / skill_view / memory as a substitute for purchasing.",
       purchaseTask
         ? [
             "",
-            "## REQUIRED for this purchase task",
-            "1. agntpymt_get_agent_policy",
-            "2. agntpymt_initiate_purchase with the user's purchaseIntent and runId above",
-            "3. Report the JSON result (completed / pending_approval / error) to the user",
-            "Do NOT offer to reuse prior sessions instead of purchasing.",
+            "## REQUIRED for this purchase task — DO THIS NOW",
+            `The user's message is already a clear purchase intent: "${input.prompt.trim()}"`,
+            "Do NOT ask clarifying questions about sector, vendor, geography, or data type.",
+            "Do NOT list options or wait for confirmation — call the purchase tool in this turn.",
+            "1. Optional: agntpymt_get_agent_policy (once)",
+            "2. REQUIRED: agntpymt_initiate_purchase with:",
+            `   - purchaseIntent: exactly the user's wording (or close paraphrase): "${input.prompt.trim()}"`,
+            `   - agentId: ${input.agentId}`,
+            `   - runId: ${input.runId}`,
+            "   Alternative: agntpymt_request_paid_resource with resourceId premium-data + same agentId/runId",
+            "3. After the tool returns, summarize completed / pending_approval / error — nothing else.",
+            "Seller negotiation appears automatically in the dashboard after the purchase tool runs.",
           ].join("\n")
         : "",
     ]

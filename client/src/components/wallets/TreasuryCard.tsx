@@ -54,7 +54,7 @@ export function TreasuryCard({ treasury, onUpdate }: Props) {
     <div className="rounded-2xl border-2 border-slate-200 bg-gradient-to-br from-slate-50 to-white p-6 shadow-sm">
       <div className="mb-4 flex items-center gap-2">
         <Crown className="h-5 w-5 text-accent-cyan" />
-        <h2 className="text-lg font-semibold text-slate-900">Treasury wallet (God wallet)</h2>
+        <h2 className="text-lg font-semibold text-slate-900">Treasury Wallet</h2>
       </div>
       <p className="mb-4 text-sm text-slate-600">
         Connect your company MetaMask once. Use it to fund agent operational wallets on Base Sepolia.

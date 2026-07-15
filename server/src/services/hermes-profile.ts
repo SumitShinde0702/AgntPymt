@@ -82,9 +82,14 @@ export async function migrateLegacyHermesProfiles(): Promise<void> {
 }
 
 function agntpymtApiUrl(): string {
+  // Prefer explicit internal API URL for Hermes MCP (Docker network / localhost).
+  // PUBLIC_URL is for browsers/ERC-8004 — using it for MCP causes TLS failures from Hermes.
+  const internal = process.env.AGNTPYMT_API_URL?.trim();
+  if (internal) {
+    return internal.replace(/\/$/, "").replace(/^http:\/\/localhost\b/i, "http://127.0.0.1");
+  }
   if (env.agntpymtPublicUrl.trim()) return env.agntpymtPublicUrl.replace(/\/$/, "");
-  const raw = process.env.AGNTPYMT_API_URL ?? `http://127.0.0.1:${env.port}`;
-  return raw.replace(/^http:\/\/localhost\b/i, "http://127.0.0.1");
+  return `http://127.0.0.1:${env.port}`;
 }
 
 async function defaultGatewayAgentId(): Promise<string> {
@@ -119,14 +124,20 @@ When spending money, always pass **agentId** (\`${agentId}\`) and **runId** (fro
 
 ## Buy / pay workflow (follow in order)
 
-1. \`agntpymt_get_agent_policy\` — wallet balance and auto-approve limit only.
-2. **Always call** \`agntpymt_initiate_purchase\` with \`purchaseIntent\` + \`runId\` (or \`agntpymt_request_paid_resource\` with resourceId \`premium-data\`).
+1. Optional: \`agntpymt_get_agent_policy\` — wallet balance and auto-approve limit only.
+2. **Immediately call** \`agntpymt_initiate_purchase\` with the user's \`purchaseIntent\` + \`runId\`
+   (or \`agntpymt_request_paid_resource\` with resourceId \`premium-data\`).
 3. Read the JSON result: \`completed\`, \`pending_approval\`, or \`error\`.
 4. If \`pending_approval\`, tell the user — they approve in the AgntPymt dashboard.
 
+## Demo / clear intents
+
+If the user says something like "Buy premium sector research data", that **is** the purchaseIntent.
+Do **not** ask which sector, vendor, geography, or data type. Call the purchase tool in the same turn.
+
 ## Rules
 
-- **Never skip step 2.** Do not end a purchase task after policy/transactions/session_search only.
+- **Never skip step 2.** Do not end a purchase task after policy / list_agents / skill_view / session_search only.
 - Never skip AgntPymt for paid resources.
 - Always include \`runId\` so payment steps appear in the dashboard run.
 - **There is no $1.50 list price.** Demo vendor price is ~$0.01–$0.02 USDC from the purchase tool. Do not invent amounts.
@@ -163,6 +174,7 @@ function buildSoulSeed(
     "",
     "When a task requires spending money, use the `agntpymt_initiate_purchase` MCP tool.",
     "Respect auto-approve limits and negotiation rules. Never bypass human approval when required.",
+    "If the user already named what to buy (e.g. premium sector research data), do not ask clarifying questions — call the purchase tool immediately.",
     ""
   );
   if (negotiationRules?.trim()) {

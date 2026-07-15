@@ -30,7 +30,10 @@ export function getProfilesDir(): string {
 }
 
 export function profileNameForAgent(orgId: string, agentId: string): string {
-  return `${orgId}__${agentId}`;
+  // Hermes requires [a-z0-9][a-z0-9_-]* — Clerk org IDs are mixed-case.
+  const raw = `${orgId}__${agentId}`.toLowerCase().replace(/[^a-z0-9_-]+/g, "-");
+  const cleaned = raw.replace(/^-+/, "").replace(/-+/g, "-");
+  return cleaned || "agent";
 }
 
 export function profileDirForAgent(agent: {
