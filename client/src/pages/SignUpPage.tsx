@@ -5,7 +5,7 @@ export function SignUpPage() {
   return (
     <AuthShell
       title="Create your account"
-      subtitle="Get started with agent wallets, policies, and x402 payments."
+      subtitle="Get started with agent wallets, policies, and x402 payments!"
     >
       <SignUp
         routing="path"
