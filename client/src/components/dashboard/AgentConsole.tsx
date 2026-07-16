@@ -96,19 +96,20 @@ export function AgentConsole({ agents, onRunComplete, onNewAgent }: Props) {
 
     if (
       event.step === "run_completed" ||
-      event.step === "payment_pending" ||
       event.step === "run_failed" ||
       event.step === "payment_failed" ||
+      event.step === "payment_denied" ||
+      event.step === "policy_denied" ||
       event.step === "hermes_approval_denied"
     ) {
       ctx.finish();
       return;
     }
 
-    // Reset idle timer on every event so long Hermes + negotiation runs don't die at 90s.
-    if (event.step === "hermes_approval") {
+    // Keep the stream open while waiting for human approval (chat + Approvals tab).
+    if (event.step === "hermes_approval" || event.step === "payment_pending") {
       armTimeout(600_000, () => {
-        setRunError("Waiting for approval timed out — approve or deny in the chat.");
+        setRunError("Waiting for approval timed out — approve or deny in the chat or Approvals.");
         ctx.finish();
       });
       return;
@@ -199,7 +200,7 @@ export function AgentConsole({ agents, onRunComplete, onNewAgent }: Props) {
         setRunning(true);
         const awaitingApproval =
           history.status === "awaiting_approval" &&
-          history.events.some((e) => e.step === "hermes_approval");
+          history.events.some((e) => e.step === "hermes_approval" || e.step === "payment_pending");
         void connectToRun(history.runId, { awaitingApproval });
       }
     } catch {

@@ -11,6 +11,8 @@ export const organizations = pgTable("organizations", {
   treasuryWalletAddress: text("treasury_wallet_address"),
   /** Org kill switch — when true, all agent purchases are denied before execution. */
   agentsPaused: boolean("agents_paused").notNull().default(false),
+  /** Hard ceiling on every agent's auto-approve limit (nullable = no org ceiling). */
+  maxExposureLimitUsd: doublePrecision("max_exposure_limit_usd"),
   createdAt: text("created_at").notNull(),
 });
 

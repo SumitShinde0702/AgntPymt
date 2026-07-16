@@ -141,6 +141,7 @@ export type AgentPolicy = {
 
 export type OrgSettings = {
   agentsPaused: boolean;
+  maxExposureLimitUsd: number | null;
 };
 
 export type Agent = {

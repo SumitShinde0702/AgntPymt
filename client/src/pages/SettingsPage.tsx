@@ -3,14 +3,27 @@ import { AlertTriangle, Shield, ShieldOff } from "lucide-react";
 import { api, type OrgSettings } from "../lib/api";
 import { Spinner } from "../components/ui/Skeleton";
 
+function toNullableNumber(value: string): number | null {
+  const trimmed = value.trim();
+  if (!trimmed) return null;
+  const n = Number(trimmed);
+  return Number.isFinite(n) && n > 0 ? n : null;
+}
+
 export function SettingsPage() {
   const [settings, setSettings] = useState<OrgSettings | null>(null);
-  const [saving, setSaving] = useState(false);
+  const [ceiling, setCeiling] = useState("");
+  const [savingKill, setSavingKill] = useState(false);
+  const [savingCeiling, setSavingCeiling] = useState(false);
+  const [savedCeiling, setSavedCeiling] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
     void api<OrgSettings>("/api/org/settings")
-      .then(setSettings)
+      .then((s) => {
+        setSettings(s);
+        setCeiling(s.maxExposureLimitUsd != null ? String(s.maxExposureLimitUsd) : "");
+      })
       .catch((err: unknown) =>
         setError(err instanceof Error ? err.message : "Failed to load settings")
       );
@@ -18,7 +31,7 @@ export function SettingsPage() {
 
   async function togglePause() {
     if (!settings) return;
-    setSaving(true);
+    setSavingKill(true);
     setError(null);
     try {
       const next = await api<OrgSettings>("/api/org/settings", {
@@ -29,7 +42,26 @@ export function SettingsPage() {
     } catch (err) {
       setError(err instanceof Error ? err.message : "Failed to update kill switch");
     } finally {
-      setSaving(false);
+      setSavingKill(false);
+    }
+  }
+
+  async function saveCeiling() {
+    setSavingCeiling(true);
+    setSavedCeiling(false);
+    setError(null);
+    try {
+      const next = await api<OrgSettings>("/api/org/settings", {
+        method: "PATCH",
+        body: JSON.stringify({ maxExposureLimitUsd: toNullableNumber(ceiling) }),
+      });
+      setSettings(next);
+      setCeiling(next.maxExposureLimitUsd != null ? String(next.maxExposureLimitUsd) : "");
+      setSavedCeiling(true);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Failed to save exposure ceiling");
+    } finally {
+      setSavingCeiling(false);
     }
   }
 
@@ -86,15 +118,49 @@ export function SettingsPage() {
           <button
             type="button"
             onClick={() => void togglePause()}
-            disabled={saving}
+            disabled={savingKill}
             className={`shrink-0 rounded-lg px-4 py-2 text-sm font-medium transition disabled:opacity-50 ${
               paused
                 ? "bg-emerald-600 text-white hover:bg-emerald-700"
                 : "bg-red-600 text-white hover:bg-red-700"
             }`}
           >
-            {saving ? "Updating…" : paused ? "Resume agents" : "Pause all agents"}
+            {savingKill ? "Updating…" : paused ? "Resume agents" : "Pause all agents"}
           </button>
+        </div>
+      </div>
+
+      <div className="rounded-2xl border border-slate-200 bg-white p-6 shadow-sm">
+        <h2 className="text-lg font-semibold text-slate-900">Exposure ceiling</h2>
+        <p className="mt-1 text-sm text-slate-600">
+          Hard org max per transaction. Payments above this are auto-rejected (not sent for approval).
+          Agent auto-approve limits are also capped to this value. Leave blank for no ceiling.
+        </p>
+        <div className="mt-4 flex flex-wrap items-center gap-3">
+          <div className="flex items-center gap-2 text-sm">
+            <input
+              type="number"
+              min="0"
+              step="any"
+              value={ceiling}
+              onChange={(e) => {
+                setCeiling(e.target.value);
+                setSavedCeiling(false);
+              }}
+              placeholder="none"
+              className="w-32 rounded-lg border border-slate-200 px-3 py-2 text-sm focus:border-[#00a8e8] focus:outline-none focus:ring-1 focus:ring-[#00a8e8]/40"
+            />
+            <span className="text-slate-500">USDC / transaction</span>
+          </div>
+          <button
+            type="button"
+            onClick={() => void saveCeiling()}
+            disabled={savingCeiling}
+            className="btn-primary disabled:opacity-50"
+          >
+            {savingCeiling ? "Saving…" : "Save ceiling"}
+          </button>
+          {savedCeiling && <span className="text-sm text-emerald-600">Saved</span>}
         </div>
       </div>
 

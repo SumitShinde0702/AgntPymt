@@ -90,8 +90,8 @@ export async function runPurchaseFlow(params: PurchaseParams) {
   const policy = await getAgentPolicy(params.agentId);
   const settlementOnly = params.settlementOnly ?? !env.openaiApiKey;
 
-  const { agentsPaused } = await getOrgSettings(agent.orgId);
-  if (agentsPaused) {
+  const orgSettings = await getOrgSettings(agent.orgId);
+  if (orgSettings.agentsPaused) {
     await logAudit({
       runId: params.runId,
       agentId: params.agentId,
@@ -250,15 +250,44 @@ export async function runPurchaseFlow(params: PurchaseParams) {
     source: params.source,
   });
 
+  // Org exposure ceiling is a hard deny. Agent auto-approve overage escalates for human approval.
+  const orgCeiling = orgSettings.maxExposureLimitUsd;
+
   await logAudit({
     runId: params.runId,
     agentId: params.agentId,
     step: "policy_evaluated",
-    message: `Policy check: ${formatUsdc(finalPrice)} vs auto-approve limit ${formatUsdc(policy.autoApproveLimitUsd)}`,
+    message:
+      orgCeiling != null
+        ? `Policy check: ${formatUsdc(finalPrice)} vs auto-approve ${formatUsdc(policy.autoApproveLimitUsd)} · org ceiling ${formatUsdc(orgCeiling)}`
+        : `Policy check: ${formatUsdc(finalPrice)} vs auto-approve limit ${formatUsdc(policy.autoApproveLimitUsd)}`,
     actor: "AgntPymt Policy Engine",
-    payload: { finalPrice, limit: policy.autoApproveLimitUsd },
+    payload: {
+      finalPrice,
+      agentLimit: policy.autoApproveLimitUsd,
+      orgCeiling,
+    },
     source: params.source,
   });
+
+  if (orgCeiling != null && finalPrice > orgCeiling) {
+    await logAudit({
+      runId: params.runId,
+      agentId: params.agentId,
+      step: "policy_denied",
+      message: `Denied — ${formatUsdc(finalPrice)} exceeds org exposure ceiling ${formatUsdc(orgCeiling)}`,
+      actor: "AgntPymt Policy Engine",
+      payload: { finalPrice, orgCeiling },
+      source: params.source,
+    });
+    await db
+      .update(schema.sellerSessions)
+      .set({ quotedPriceUsd: vendor.listPriceUsd, finalPriceUsd: finalPrice, status: "denied" })
+      .where(eq(schema.sellerSessions.id, sessionId));
+    throw new PolicyDeniedError(
+      `Purchase of ${formatUsdc(finalPrice)} exceeds org exposure ceiling ${formatUsdc(orgCeiling)}`
+    );
+  }
 
   if (finalPrice > policy.autoApproveLimitUsd) {
     const approvalId = nanoid();
@@ -285,7 +314,7 @@ export async function runPurchaseFlow(params: PurchaseParams) {
       runId: params.runId,
       agentId: params.agentId,
       step: "payment_pending",
-      message: `Requires human approval — ${formatUsdc(finalPrice)} exceeds ${formatUsdc(policy.autoApproveLimitUsd)} limit`,
+      message: `Requires human approval — ${formatUsdc(finalPrice)} exceeds auto-approve limit ${formatUsdc(policy.autoApproveLimitUsd)}. Approve here or in Approvals.`,
       actor: "AgntPymt",
       payload: { approvalId },
       source: params.source,
@@ -333,7 +362,7 @@ export async function settlePurchase(params: {
       step: "payment_simulated",
       message: `Simulated payment of ${formatUsdc(params.finalPrice)} to ${params.vendor.name}`,
       actor: "AgntPymt",
-      payload: { simulated: true, amountUsd: params.finalPrice },
+      payload: { simulated: true, amountUsd: params.finalPrice, approvalId: params.approvalId },
       source: params.source,
     });
   } else {
@@ -389,6 +418,7 @@ export async function settlePurchase(params: {
           txHash,
           from: settled.from,
           explorerUrl: `https://sepolia.basescan.org/tx/${txHash}`,
+          approvalId: params.approvalId,
         },
         source: params.source,
       });
@@ -441,7 +471,11 @@ export async function settlePurchase(params: {
     step: "order_fulfilled",
     message: `${params.vendor.name} fulfilled — ${fulfillmentDetail} (${formatUsdc(params.finalPrice)})`,
     actor: params.vendor.name,
-    payload: { ...fulfillment, txHash: txHash ?? undefined } as Record<string, unknown>,
+    payload: {
+      ...fulfillment,
+      txHash: txHash ?? undefined,
+      approvalId: params.approvalId,
+    } as Record<string, unknown>,
     source: params.source,
   });
 
@@ -570,8 +604,35 @@ export async function approveAndSettle(approvalId: string) {
 
 export async function denyApproval(approvalId: string) {
   const db = getDb();
+  const [approval] = await db.select().from(schema.approvals).where(eq(schema.approvals.id, approvalId));
+  if (!approval) throw new Error("Approval not found");
+  if (approval.status !== "pending_approval") throw new Error("Approval already resolved");
+
+  const now = new Date().toISOString();
   await db
     .update(schema.approvals)
-    .set({ status: "denied", resolvedAt: new Date().toISOString() })
+    .set({ status: "denied", resolvedAt: now })
     .where(eq(schema.approvals.id, approvalId));
+
+  if (approval.sellerSessionId) {
+    await db
+      .update(schema.sellerSessions)
+      .set({ status: "denied" })
+      .where(eq(schema.sellerSessions.id, approval.sellerSessionId));
+  }
+
+  if (approval.runId) {
+    await logAudit({
+      runId: approval.runId,
+      agentId: approval.agentId,
+      step: "payment_denied",
+      message: `Payment denied — ${formatUsdc(approval.amountUsd)} to ${approval.vendorName}`,
+      actor: "You",
+      payload: { approvalId },
+    });
+    await db
+      .update(schema.runs)
+      .set({ status: "failed", completedAt: now })
+      .where(eq(schema.runs.id, approval.runId));
+  }
 }

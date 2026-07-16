@@ -31,6 +31,8 @@ const STEP_LABELS: Record<string, string> = {
   payment_settled: "Payment sent",
   payment_failed: "Payment failed",
   payment_pending: "Awaiting approval",
+  payment_denied: "Payment denied",
+  policy_denied: "Denied by policy",
   order_fulfilled: "Order delivered",
   run_completed: "Run complete",
   run_failed: "Run failed",
@@ -149,7 +151,13 @@ function classifyEvent(event: RunEvent, agentName?: string): ChatRole {
 }
 
 function isFailureStep(step: string) {
-  return step === "payment_failed" || step === "run_failed" || step === "hermes_approval_denied";
+  return (
+    step === "payment_failed" ||
+    step === "run_failed" ||
+    step === "hermes_approval_denied" ||
+    step === "payment_denied" ||
+    step === "policy_denied"
+  );
 }
 
 function isSuccessStep(step: string) {
@@ -289,7 +297,8 @@ function ChatBubble({
   const label = STEP_LABELS[event.step] ?? event.step.replace(/_/g, " ");
   const failed = isFailureStep(event.step);
   const success = isSuccessStep(event.step);
-  const pendingApproval = event.step === "hermes_approval" && !approvalResolved;
+  const pendingApproval =
+    (event.step === "hermes_approval" || event.step === "payment_pending") && !approvalResolved;
   const approvalId =
     typeof event.payload?.approvalId === "string" ? event.payload.approvalId : undefined;
   const txHash = txHashFromEvent(event);
@@ -336,7 +345,7 @@ function ChatBubble({
                 onClick={() => void onHermesApproval(approvalId, "approve")}
                 className="btn-primary-xs"
               >
-                Approve once
+                {event.step === "payment_pending" ? "Approve payment" : "Approve once"}
               </button>
             </div>
           )}
@@ -423,7 +432,15 @@ export function RunChatFeed({ events, agentName, emptyMessage, live, onHermesApp
 
   const resolvedApprovalIds = new Set(
     events
-      .filter((e) => e.step === "hermes_approval_granted" || e.step === "hermes_approval_denied")
+      .filter(
+        (e) =>
+          e.step === "hermes_approval_granted" ||
+          e.step === "hermes_approval_denied" ||
+          e.step === "payment_denied" ||
+          e.step === "payment_settled" ||
+          e.step === "payment_simulated" ||
+          e.step === "order_fulfilled"
+      )
       .map((e) => e.payload?.approvalId)
       .filter((id): id is string => typeof id === "string")
   );

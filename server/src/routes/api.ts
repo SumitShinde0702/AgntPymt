@@ -197,6 +197,7 @@ apiRouter.get("/org/settings", async (req, res) => {
 
 const patchOrgSettingsSchema = z.object({
   agentsPaused: z.boolean().optional(),
+  maxExposureLimitUsd: z.number().positive().nullable().optional(),
 });
 
 apiRouter.patch("/org/settings", async (req, res) => {
@@ -222,7 +223,11 @@ apiRouter.patch("/agents/:id/policy", async (req, res) => {
 
   const updates: Record<string, number | string | null> = {};
   if (parsed.data.autoApproveLimitUsd != null) {
-    updates.autoApproveLimitUsd = parsed.data.autoApproveLimitUsd;
+    const { maxExposureLimitUsd } = await getOrgSettings(orgId);
+    updates.autoApproveLimitUsd =
+      maxExposureLimitUsd != null
+        ? Math.min(parsed.data.autoApproveLimitUsd, maxExposureLimitUsd)
+        : parsed.data.autoApproveLimitUsd;
   }
   if (parsed.data.negotiationRules !== undefined) {
     updates.negotiationRules = parsed.data.negotiationRules;
@@ -308,9 +313,12 @@ apiRouter.post("/agents", async (req, res) => {
   };
 
   await db.insert(schema.agents).values(row);
+  const { maxExposureLimitUsd } = await getOrgSettings(orgId);
+  const requestedLimit = parsed.data.autoApproveLimitUsd ?? 0.05;
   await db.insert(schema.agentPolicies).values({
     agentId: id,
-    autoApproveLimitUsd: parsed.data.autoApproveLimitUsd ?? 0.05,
+    autoApproveLimitUsd:
+      maxExposureLimitUsd != null ? Math.min(requestedLimit, maxExposureLimitUsd) : requestedLimit,
     negotiationRules: parsed.data.negotiationRules?.trim() || null,
   });
   await provisionAgentWallet(id);

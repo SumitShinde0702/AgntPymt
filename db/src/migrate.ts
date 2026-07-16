@@ -140,6 +140,7 @@ ALTER TABLE vendors ADD COLUMN IF NOT EXISTS erc8004_registered_at TEXT;
 ALTER TABLE transactions ADD COLUMN IF NOT EXISTS feedback_tx_hash TEXT;
 
 ALTER TABLE organizations ADD COLUMN IF NOT EXISTS agents_paused BOOLEAN NOT NULL DEFAULT FALSE;
+ALTER TABLE organizations ADD COLUMN IF NOT EXISTS max_exposure_limit_usd DOUBLE PRECISION;
 `;
 
 await sql.unsafe(alterSql);
