@@ -33,6 +33,7 @@ import { erc8004Router } from "./erc8004.js";
 import { vendorErc8004Router } from "./vendor-erc8004.js";
 import { getVendorErc8004Status } from "../services/vendor-erc8004.js";
 import { listPaymentsForOrg, paymentsToCsv } from "../services/transactions.js";
+import { getOrgSettings, updateOrgSettings } from "../services/org-settings.js";
 
 export const apiRouter = Router();
 
@@ -187,6 +188,22 @@ apiRouter.get("/policies", async (_req, res) => {
   const db = getDb();
   const rows = await db.select().from(schema.agentPolicies);
   res.json(rows);
+});
+
+apiRouter.get("/org/settings", async (req, res) => {
+  const settings = await getOrgSettings(getOrgId(req));
+  res.json(settings);
+});
+
+const patchOrgSettingsSchema = z.object({
+  agentsPaused: z.boolean().optional(),
+});
+
+apiRouter.patch("/org/settings", async (req, res) => {
+  const parsed = patchOrgSettingsSchema.safeParse(req.body);
+  if (!parsed.success) return res.status(400).json(parsed.error.flatten());
+  const settings = await updateOrgSettings(parsed.data, getOrgId(req));
+  res.json(settings);
 });
 
 const patchPolicySchema = z.object({

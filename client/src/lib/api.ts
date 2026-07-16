@@ -139,6 +139,10 @@ export type AgentPolicy = {
   negotiationRules: string | null;
 };
 
+export type OrgSettings = {
+  agentsPaused: boolean;
+};
+
 export type Agent = {
   id: string;
   name: string;

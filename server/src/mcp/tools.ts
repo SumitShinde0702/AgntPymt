@@ -93,7 +93,7 @@ export async function mcpExecutePurchase(params: {
   resourceId?: string;
   maxBudget?: number;
 }) {
-  const { runPurchaseFlow } = await import("../simulation/purchase-flow.js");
+  const { runPurchaseFlow, PolicyDeniedError } = await import("../simulation/purchase-flow.js");
   try {
     return await runPurchaseFlow({
       runId: params.runId,
@@ -105,6 +105,9 @@ export async function mcpExecutePurchase(params: {
       source: "mcp",
     });
   } catch (err) {
+    if (err instanceof PolicyDeniedError) {
+      return { status: "denied" as const, reason: err.message, runId: params.runId };
+    }
     const message = err instanceof Error ? err.message : "Purchase failed";
     return { status: "error" as const, error: message, runId: params.runId };
   }

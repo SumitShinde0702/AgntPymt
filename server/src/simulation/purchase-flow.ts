@@ -8,9 +8,18 @@ import { formatUsdc } from "./pricing.js";
 import { settleViaX402 } from "../chain/x402.js";
 import { generateNegotiationMessage, type TranscriptLine } from "../services/negotiation-ai.js";
 import { recordBuyerRatesSeller } from "../services/erc8004.js";
+import { getOrgSettings } from "../services/org-settings.js";
 
 function delay(ms: number) {
   return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
+/** Thrown when the org kill switch denies an action before execution. */
+export class PolicyDeniedError extends Error {
+  constructor(message: string) {
+    super(message);
+    this.name = "PolicyDeniedError";
+  }
 }
 
 async function getAgentPolicy(agentId: string) {
@@ -80,6 +89,19 @@ export async function runPurchaseFlow(params: PurchaseParams) {
   const vendor = matchVendor(vendors, params.purchaseIntent, params.category ?? agent.category, params.resourceId);
   const policy = await getAgentPolicy(params.agentId);
   const settlementOnly = params.settlementOnly ?? !env.openaiApiKey;
+
+  const { agentsPaused } = await getOrgSettings(agent.orgId);
+  if (agentsPaused) {
+    await logAudit({
+      runId: params.runId,
+      agentId: params.agentId,
+      step: "policy_denied",
+      message: "Denied — all agents are paused by the org kill switch",
+      actor: "AgntPymt Policy Engine",
+      source: params.source,
+    });
+    throw new PolicyDeniedError("All agents are paused by the org kill switch");
+  }
 
   const sessionId = nanoid();
   const createdAt = new Date().toISOString();

@@ -5,7 +5,7 @@ import { logAudit } from "./audit.js";
 import { runEventBus } from "./event-bus.js";
 import { checkHermesHealth, startHermesRun, streamHermesRunEvents, type HermesRunEvent } from "./hermes.js";
 import { ensureHermesProfile, readSoul, profileDirForAgent, syncHermesGatewayMcpConfig } from "./hermes-profile.js";
-import { runPurchaseFlow } from "../simulation/purchase-flow.js";
+import { runPurchaseFlow, PolicyDeniedError } from "../simulation/purchase-flow.js";
 import { matchVendor } from "../simulation/vendor-matcher.js";
 import { createHermesToolApproval } from "./hermes-approvals.js";
 import { setActiveRun, clearActiveRun } from "./run-context.js";
@@ -372,13 +372,16 @@ async function completeRunWithLocalLogic(runId: string, agentId: string, prompt:
       }
     } catch (err) {
       const message = err instanceof Error ? err.message : "Purchase flow failed";
-      await logAudit({
-        runId,
-        agentId,
-        step: "run_failed",
-        message: `Run stopped — ${message}`,
-        actor: "AgntPymt",
-      });
+      // Kill-switch denials are already audited as `policy_denied`.
+      if (!(err instanceof PolicyDeniedError)) {
+        await logAudit({
+          runId,
+          agentId,
+          step: "run_failed",
+          message: `Run stopped — ${message}`,
+          actor: "AgntPymt",
+        });
+      }
       await db.update(schema.runs).set({ status: "failed" }).where(eq(schema.runs.id, runId));
       return;
     }

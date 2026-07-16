@@ -9,6 +9,8 @@ export const organizations = pgTable("organizations", {
   id: text("id").primaryKey(),
   name: text("name").notNull(),
   treasuryWalletAddress: text("treasury_wallet_address"),
+  /** Org kill switch — when true, all agent purchases are denied before execution. */
+  agentsPaused: boolean("agents_paused").notNull().default(false),
   createdAt: text("created_at").notNull(),
 });
 

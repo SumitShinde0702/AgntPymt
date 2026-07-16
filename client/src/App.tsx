@@ -14,6 +14,7 @@ import { WalletsPage } from "./pages/WalletsPage";
 import { ApprovalsPage } from "./pages/ApprovalsPage";
 import { PaymentsPage } from "./pages/PaymentsPage";
 import { LogsPage } from "./pages/LogsPage";
+import { SettingsPage } from "./pages/SettingsPage";
 import { PlaceholderPage } from "./pages/PlaceholderPage";
 import { showSellerAdmin } from "./lib/features";
 
@@ -63,7 +64,7 @@ export default function App() {
           <Route path="payments" element={<PaymentsPage />} />
           <Route path="approvals" element={<ApprovalsPage />} />
           <Route path="policies" element={<PlaceholderPage title="Policies" />} />
-          <Route path="settings" element={<PlaceholderPage title="Settings" />} />
+          <Route path="settings" element={<SettingsPage />} />
           <Route path="logs" element={<LogsPage />} />
         </Route>
       </Route>
