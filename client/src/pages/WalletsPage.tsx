@@ -3,6 +3,7 @@ import { ExternalLink } from "lucide-react";
 import { api, type WalletsOverview } from "../lib/api";
 import { TreasuryCard } from "../components/wallets/TreasuryCard";
 import { AgentWalletsTable } from "../components/wallets/AgentWalletsTable";
+import { PageSkeleton } from "../components/ui/Skeleton";
 
 const FAUCETS = [
   {
@@ -31,7 +32,7 @@ export function WalletsPage() {
   }, [load]);
 
   if (!data) {
-    return <div className="text-slate-500">Loading wallets…</div>;
+    return <PageSkeleton cards={3} />;
   }
 
   const totalUsdc = data.agents.reduce((s, a) => s + a.onChain.usdc, 0);

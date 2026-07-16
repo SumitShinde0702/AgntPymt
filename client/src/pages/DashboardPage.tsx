@@ -7,6 +7,7 @@ import { AgentsTable } from "../components/dashboard/AgentsTable";
 import { PendingApprovals } from "../components/dashboard/PendingApprovals";
 import { WalletQuickLink } from "../components/dashboard/WalletQuickLink";
 import { RecentTransactions } from "../components/dashboard/RecentTransactions";
+import { DashboardSkeleton } from "../components/dashboard/DashboardSkeleton";
 
 export function DashboardPage() {
   const [data, setData] = useState<DashboardData | null>(null);
@@ -21,7 +22,7 @@ export function DashboardPage() {
   }, [load]);
 
   if (!data) {
-    return <div className="text-slate-500">Loading dashboard…</div>;
+    return <DashboardSkeleton />;
   }
 
   return (

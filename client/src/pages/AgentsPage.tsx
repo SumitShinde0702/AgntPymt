@@ -2,6 +2,7 @@ import { useCallback, useEffect, useMemo, useState } from "react";
 import { Link } from "react-router-dom";
 import { Plus, Wallet } from "lucide-react";
 import { AgentPassportCard } from "../components/agents/AgentPassportCard";
+import { AgentsSkeleton } from "../components/agents/AgentsSkeleton";
 import { NewAgentModal } from "../components/agents/NewAgentModal";
 import {
   api,
@@ -57,23 +58,20 @@ export function AgentsPage() {
   }, [transactions]);
 
   if (!wallets) {
-    return (
-      <div className="space-y-4">
-        {loadError ? (
-          <div className="rounded-xl border border-amber-200 bg-amber-50 p-4 text-sm text-amber-900">
-            <p className="font-medium">API server unreachable</p>
-            <p className="mt-1 text-amber-800">
-              Run <code className="rounded bg-amber-100 px-1">npm run dev</code> in the project root, then retry.
-            </p>
-            <button type="button" onClick={load} className="btn-primary-sm mt-3">
-              Retry
-            </button>
-          </div>
-        ) : (
-          <div className="text-slate-500">Loading agents…</div>
-        )}
-      </div>
-    );
+    if (loadError) {
+      return (
+        <div className="rounded-xl border border-amber-200 bg-amber-50 p-4 text-sm text-amber-900">
+          <p className="font-medium">API server unreachable</p>
+          <p className="mt-1 text-amber-800">
+            Run <code className="rounded bg-amber-100 px-1">npm run dev</code> in the project root, then retry.
+          </p>
+          <button type="button" onClick={load} className="btn-primary-sm mt-3">
+            Retry
+          </button>
+        </div>
+      );
+    }
+    return <AgentsSkeleton />;
   }
 
   return (

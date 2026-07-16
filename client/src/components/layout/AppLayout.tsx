@@ -6,13 +6,13 @@ import {
   Wallet,
   CreditCard,
   Clock,
-  ArrowLeftRight,
   Shield,
   Settings,
   FileText,
   Sun,
+  ChevronDown,
 } from "lucide-react";
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { api, type HealthData, type DashboardData } from "../../lib/api";
 import { AuthControls } from "../auth/AuthControls";
 import { ApprovalToast } from "./ApprovalToast";
@@ -26,7 +26,6 @@ const nav = [
   { to: "/wallets", label: "Wallets", icon: Wallet },
   { to: "/payments", label: "Payments", icon: CreditCard },
   { to: "/approvals", label: "Approvals", icon: Clock, badge: true },
-  { to: "/transactions", label: "Transactions", icon: ArrowLeftRight },
   { to: "/policies", label: "Policies", icon: Shield },
   { to: "/settings", label: "Settings", icon: Settings },
 ];
@@ -38,6 +37,8 @@ export function AppLayout() {
   const [hermesProfiles, setHermesProfiles] = useState<{ provisioned: number; total: number } | null>(
     null
   );
+  const [showStatusDetail, setShowStatusDetail] = useState(false);
+  const statusRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
     const load = () => {
@@ -55,6 +56,18 @@ export function AppLayout() {
     const t = setInterval(load, 10000);
     return () => clearInterval(t);
   }, []);
+
+  useEffect(() => {
+    function onClickOutside(e: MouseEvent) {
+      if (statusRef.current && !statusRef.current.contains(e.target as Node)) {
+        setShowStatusDetail(false);
+      }
+    }
+    document.addEventListener("mousedown", onClickOutside);
+    return () => document.removeEventListener("mousedown", onClickOutside);
+  }, []);
+
+  const systemHealthy = health?.daemon === "running";
 
   return (
     <div className="flex min-h-screen bg-slate-50">
@@ -110,44 +123,51 @@ export function AppLayout() {
       <div className="flex flex-1 flex-col">
         <header className="flex items-center justify-between border-b border-slate-200 bg-white px-6 py-3">
           <div className="flex items-center gap-3">
-            <span
-              className={`inline-flex items-center gap-2 rounded-full px-3 py-1 text-sm font-medium ${
-                health?.daemon === "running"
-                  ? "bg-emerald-50 text-emerald-700"
-                  : health?.daemon === "auth_error"
-                    ? "bg-amber-50 text-amber-800"
-                    : "bg-amber-50 text-amber-700"
-              }`}
-            >
-              <span
-                className={`h-2 w-2 rounded-full ${
-                  health?.daemon === "running"
-                    ? "bg-emerald-500"
-                    : health?.daemon === "auth_error"
-                      ? "bg-amber-600"
-                      : "bg-amber-500"
+            <div ref={statusRef} className="relative">
+              <button
+                type="button"
+                onClick={() => setShowStatusDetail((v) => !v)}
+                className={`inline-flex items-center gap-2 rounded-full px-3 py-1 text-sm font-medium transition ${
+                  systemHealthy ? "bg-emerald-50 text-emerald-700" : "bg-amber-50 text-amber-800"
                 }`}
-              />
-              Daemon:{" "}
-              {health?.daemon === "running"
-                ? "Running"
-                : health?.daemon === "auth_error"
-                  ? "Auth error"
-                  : "Degraded"}
-            </span>
-            {hermesProfiles && (
-              <span className="rounded-full bg-slate-100 px-3 py-1 text-xs font-medium text-slate-700">
-                Hermes profiles: {hermesProfiles.provisioned}/{hermesProfiles.total}
-              </span>
-            )}
+              >
+                <span className={`h-2 w-2 rounded-full ${systemHealthy ? "bg-emerald-500" : "bg-amber-500"}`} />
+                {systemHealthy ? "Systems operational" : "Attention needed"}
+                <ChevronDown className="h-3.5 w-3.5 opacity-60" />
+              </button>
+
+              {showStatusDetail && (
+                <div className="absolute left-0 top-full z-20 mt-2 w-64 rounded-xl border border-slate-200 bg-white p-3 text-sm shadow-lg">
+                  <div className="flex items-center justify-between py-1">
+                    <span className="text-slate-500">Daemon</span>
+                    <span className="font-medium text-slate-800">
+                      {health?.daemon === "running"
+                        ? "Running"
+                        : health?.daemon === "auth_error"
+                          ? "Auth error"
+                          : "Degraded"}
+                    </span>
+                  </div>
+                  {hermesProfiles && (
+                    <div className="flex items-center justify-between py-1">
+                      <span className="text-slate-500">Hermes profiles</span>
+                      <span className="font-medium text-slate-800">
+                        {hermesProfiles.provisioned}/{hermesProfiles.total}
+                      </span>
+                    </div>
+                  )}
+                  <div className="flex items-center justify-between py-1">
+                    <span className="text-slate-500">Payment mode</span>
+                    <span className="font-medium text-slate-800">
+                      {health?.simulatePayments ? "Simulated" : `x402 · ${health?.network ?? ""}`}
+                    </span>
+                  </div>
+                </div>
+              )}
+            </div>
             {health?.simulatePayments && (
               <span className="rounded-full bg-amber-100 px-3 py-1 text-xs font-medium text-amber-800">
                 Simulated Commerce
-              </span>
-            )}
-            {!health?.simulatePayments && health?.paymentMode === "x402" && (
-              <span className="badge-muted">
-                x402 · {health.network}
               </span>
             )}
           </div>
@@ -165,7 +185,7 @@ export function AppLayout() {
 
         <footer className="flex items-center justify-between border-t border-slate-200 bg-white px-6 py-3 text-xs text-slate-500">
           <span>v0.1.0</span>
-          <span>Built with care for AI Agents</span>
+          <span>© 2026 AgntPymt</span>
         </footer>
       </div>
       <ApprovalToast />

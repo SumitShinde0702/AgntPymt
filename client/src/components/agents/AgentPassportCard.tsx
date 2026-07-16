@@ -66,8 +66,8 @@ export function AgentPassportCard({ agent, identity, txCount = 0 }: Props) {
       </div>
 
       <div className="mt-4 flex flex-wrap items-center gap-2">
-        <span className={`inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-[10px] font-medium ${badge.className}`}>
-          <Shield className="h-3 w-3" />
+        <span className={`inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-xs font-medium ${badge.className}`}>
+          <Shield className="h-3.5 w-3.5" />
           {badge.label}
         </span>
         {identity?.agentId && (

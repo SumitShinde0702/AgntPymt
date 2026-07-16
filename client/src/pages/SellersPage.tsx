@@ -2,6 +2,7 @@ import { useEffect, useState } from "react";
 import { Link } from "react-router-dom";
 import { ChevronRight, Store } from "lucide-react";
 import { api } from "../lib/api";
+import { PageSkeleton } from "../components/ui/Skeleton";
 
 type Vendor = {
   id: string;
@@ -43,7 +44,7 @@ export function SellersPage() {
   }, []);
 
   if (loading) {
-    return <div className="text-slate-500">Loading sellers…</div>;
+    return <PageSkeleton cards={3} />;
   }
 
   if (error) {

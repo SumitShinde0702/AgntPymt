@@ -103,4 +103,24 @@ body {
   .badge-muted {
     @apply rounded-full bg-slate-100 px-3 py-1 text-xs font-medium text-slate-800;
   }
+
+  .skeleton {
+    position: relative;
+    overflow: hidden;
+    background-color: #e2e8f0;
+  }
+  .skeleton::after {
+    content: "";
+    position: absolute;
+    inset: 0;
+    transform: translateX(-100%);
+    background-image: linear-gradient(90deg, transparent, rgba(255, 255, 255, 0.65), transparent);
+    animation: skeleton-shimmer 1.6s ease-in-out infinite;
+  }
+}
+
+@keyframes skeleton-shimmer {
+  100% {
+    transform: translateX(100%);
+  }
 }

@@ -10,6 +10,7 @@ import {
   Wallet,
 } from "lucide-react";
 import { api } from "../../lib/api";
+import { Spinner } from "../ui/Skeleton";
 import {
   ERC8004_IDENTITY_REGISTRY,
   identityRegistryAbi,
@@ -223,7 +224,7 @@ export function Erc8004Panel({
   }
 
   if (loading && !status) {
-    return <p className="text-sm text-slate-500">Loading on-chain identity…</p>;
+    return <Spinner label="Loading on-chain identity…" />;
   }
 
   if (!status) {

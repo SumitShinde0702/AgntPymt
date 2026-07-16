@@ -5,6 +5,7 @@ import { CapabilitiesPanel } from "../components/agents/CapabilitiesPanel";
 import { Erc8004Panel } from "../components/agents/Erc8004Panel";
 import { NegotiationRulesEditor } from "../components/agents/NegotiationRulesEditor";
 import { SoulEditor } from "../components/agents/SoulEditor";
+import { PageSkeleton, Spinner } from "../components/ui/Skeleton";
 import {
   api,
   type AgentPolicy,
@@ -146,7 +147,7 @@ export function AgentDetailPage() {
   );
 
   if (loading) {
-    return <div className="text-slate-500">Loading agent…</div>;
+    return <PageSkeleton cards={2} />;
   }
 
   if (loadError) {
@@ -299,7 +300,7 @@ export function AgentDetailPage() {
             <h2 className="text-lg font-semibold text-slate-900">SOUL.md</h2>
             <div className="mt-4">
               {hermesLoading && !hermes ? (
-                <p className="text-sm text-slate-500">Loading profile…</p>
+                <Spinner label="Loading profile…" />
               ) : hermes ? (
                 <SoulEditor
                   agentId={agentId!}
@@ -319,7 +320,7 @@ export function AgentDetailPage() {
       {tab === "capabilities" && (
         <section className="rounded-2xl border border-slate-200 bg-white p-6 shadow-sm">
           {hermesLoading && !hermes ? (
-            <p className="text-sm text-slate-500">Loading capabilities…</p>
+            <Spinner label="Loading capabilities…" />
           ) : hermes ? (
             <CapabilitiesPanel
               agentId={agentId}

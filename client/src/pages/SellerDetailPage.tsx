@@ -3,6 +3,7 @@ import { Link, useParams } from "react-router-dom";
 import { ArrowLeft, Store } from "lucide-react";
 import { Erc8004Panel } from "../components/agents/Erc8004Panel";
 import { api } from "../lib/api";
+import { PageSkeleton } from "../components/ui/Skeleton";
 
 type Vendor = {
   id: string;
@@ -27,7 +28,7 @@ export function SellerDetailPage() {
   if (!vendorId) return null;
 
   if (!vendor) {
-    return <div className="text-slate-500">Loading seller agent…</div>;
+    return <PageSkeleton cards={2} />;
   }
 
   return (

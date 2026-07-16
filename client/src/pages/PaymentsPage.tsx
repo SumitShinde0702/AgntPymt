@@ -2,6 +2,7 @@ import { useEffect, useState } from "react";
 import { Download, ExternalLink, RefreshCw } from "lucide-react";
 import { api, downloadPaymentsCsv, type Transaction } from "../lib/api";
 import { txExplorerUrl } from "../lib/explorer";
+import { Skeleton } from "../components/ui/Skeleton";
 
 function formatWhen(iso: string) {
   return new Date(iso).toLocaleString(undefined, {
@@ -123,7 +124,17 @@ export function PaymentsPage() {
 
       <div className="overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm">
         {loading ? (
-          <div className="p-8 text-center text-slate-500">Loading payments…</div>
+          <div className="divide-y divide-slate-100 p-4">
+            {Array.from({ length: 5 }).map((_, i) => (
+              <div key={i} className="flex items-center gap-4 py-3">
+                <Skeleton className="h-4 w-28" />
+                <Skeleton className="h-4 w-32" />
+                <Skeleton className="h-4 w-24" />
+                <Skeleton className="h-4 w-16" />
+                <Skeleton className="ml-auto h-5 w-20 rounded-full" />
+              </div>
+            ))}
+          </div>
         ) : payments.length === 0 ? (
           <div className="p-8 text-center text-slate-500">
             No payments yet. Run a purchase from the Agent Console to see settlements here.
@@ -150,7 +161,7 @@ export function PaymentsPage() {
                     <td className="px-4 py-3 font-medium text-slate-900">{p.agentName}</td>
                     <td className="px-4 py-3 text-slate-700">{p.vendorName}</td>
                     <td className="whitespace-nowrap px-4 py-3 font-semibold text-slate-900">
-                      {p.amountUsd.toFixed(2)} USDC
+                      − {p.amountUsd.toFixed(2)} USDC
                     </td>
                     <td className="px-4 py-3">
                       <span
