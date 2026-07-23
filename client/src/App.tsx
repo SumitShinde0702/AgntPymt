@@ -15,7 +15,7 @@ import { ApprovalsPage } from "./pages/ApprovalsPage";
 import { PaymentsPage } from "./pages/PaymentsPage";
 import { LogsPage } from "./pages/LogsPage";
 import { SettingsPage } from "./pages/SettingsPage";
-import { PlaceholderPage } from "./pages/PlaceholderPage";
+import { PoliciesPage } from "./pages/PoliciesPage";
 import { showSellerAdmin } from "./lib/features";
 
 const clerkEnabled = Boolean(import.meta.env.VITE_CLERK_PUBLISHABLE_KEY);
@@ -63,7 +63,7 @@ export default function App() {
           <Route path="wallets" element={<WalletsPage />} />
           <Route path="payments" element={<PaymentsPage />} />
           <Route path="approvals" element={<ApprovalsPage />} />
-          <Route path="policies" element={<PlaceholderPage title="Policies" />} />
+          <Route path="policies" element={<PoliciesPage />} />
           <Route path="settings" element={<SettingsPage />} />
           <Route path="logs" element={<LogsPage />} />
         </Route>

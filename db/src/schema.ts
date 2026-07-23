@@ -52,6 +52,8 @@ export const agentPolicies = pgTable("agent_policies", {
   requireWalletConfirmation: boolean("require_wallet_confirmation").notNull().default(false),
   autoSettlementEnabled: boolean("auto_settlement_enabled").notNull().default(true),
   negotiationRules: text("negotiation_rules"),
+  /** Max settled spend per rolling 24h; null = no daily cap. Overage escalates for approval. */
+  dailyAggregateCapUsd: doublePrecision("daily_aggregate_cap_usd"),
 });
 
 export const vendors = pgTable("vendors", {

@@ -1,5 +1,5 @@
 import { nanoid } from "nanoid";
-import { eq } from "@agntpymt/db";
+import { eq, and, gte, inArray } from "@agntpymt/db";
 import { getDb, schema, type Vendor } from "@agntpymt/db";
 import { env } from "../config.js";
 import { logAudit } from "../services/audit.js";
@@ -9,6 +9,8 @@ import { settleViaX402 } from "../chain/x402.js";
 import { generateNegotiationMessage, type TranscriptLine } from "../services/negotiation-ai.js";
 import { recordBuyerRatesSeller } from "../services/erc8004.js";
 import { getOrgSettings } from "../services/org-settings.js";
+
+const DAY_MS = 24 * 60 * 60 * 1000;
 
 function delay(ms: number) {
   return new Promise((resolve) => setTimeout(resolve, ms));
@@ -33,7 +35,29 @@ async function getAgentPolicy(agentId: string) {
     requireWalletConfirmation: false,
     autoSettlementEnabled: true,
     negotiationRules: null,
+    dailyAggregateCapUsd: null as number | null,
   };
+}
+
+/** Settled spend for this agent over the rolling last 24 hours. */
+async function sumAgentSpendLast24h(agentId: string): Promise<number> {
+  const db = getDb();
+  const since = new Date(Date.now() - DAY_MS).toISOString();
+  const rows = await db
+    .select({
+      amountUsd: schema.transactions.amountUsd,
+      status: schema.transactions.status,
+      createdAt: schema.transactions.createdAt,
+    })
+    .from(schema.transactions)
+    .where(
+      and(
+        eq(schema.transactions.agentId, agentId),
+        gte(schema.transactions.createdAt, since),
+        inArray(schema.transactions.status, ["completed", "simulated"])
+      )
+    );
+  return rows.reduce((sum, r) => sum + r.amountUsd, 0);
 }
 
 async function getAgent(agentId: string) {
@@ -250,21 +274,32 @@ export async function runPurchaseFlow(params: PurchaseParams) {
     source: params.source,
   });
 
-  // Org exposure ceiling is a hard deny. Agent auto-approve overage escalates for human approval.
+  // Org exposure ceiling is a hard deny. Agent auto-approve / daily-cap overage escalates.
   const orgCeiling = orgSettings.maxExposureLimitUsd;
+  const dailySpendUsd = await sumAgentSpendLast24h(params.agentId);
+  const dailyCap = policy.dailyAggregateCapUsd;
+  const overDailyCap = dailyCap != null && dailySpendUsd + finalPrice > dailyCap;
+  const overAutoApprove = finalPrice > policy.autoApproveLimitUsd;
+
+  const policyParts = [
+    `auto-approve ${formatUsdc(policy.autoApproveLimitUsd)}`,
+    dailyCap != null
+      ? `daily cap ${formatUsdc(dailyCap)} (spent ${formatUsdc(dailySpendUsd)} / 24h)`
+      : null,
+    orgCeiling != null ? `org ceiling ${formatUsdc(orgCeiling)}` : null,
+  ].filter(Boolean);
 
   await logAudit({
     runId: params.runId,
     agentId: params.agentId,
     step: "policy_evaluated",
-    message:
-      orgCeiling != null
-        ? `Policy check: ${formatUsdc(finalPrice)} vs auto-approve ${formatUsdc(policy.autoApproveLimitUsd)} · org ceiling ${formatUsdc(orgCeiling)}`
-        : `Policy check: ${formatUsdc(finalPrice)} vs auto-approve limit ${formatUsdc(policy.autoApproveLimitUsd)}`,
+    message: `Policy check: ${formatUsdc(finalPrice)} vs ${policyParts.join(" · ")}`,
     actor: "AgntPymt Policy Engine",
     payload: {
       finalPrice,
       agentLimit: policy.autoApproveLimitUsd,
+      dailyCap,
+      dailySpendUsd,
       orgCeiling,
     },
     source: params.source,
@@ -289,8 +324,20 @@ export async function runPurchaseFlow(params: PurchaseParams) {
     );
   }
 
-  if (finalPrice > policy.autoApproveLimitUsd) {
+  if (overAutoApprove || overDailyCap) {
     const approvalId = nanoid();
+    const reasonParts: string[] = [];
+    if (overAutoApprove) {
+      reasonParts.push(
+        `exceeds auto-approve limit ${formatUsdc(policy.autoApproveLimitUsd)}`
+      );
+    }
+    if (overDailyCap && dailyCap != null) {
+      reasonParts.push(
+        `would exceed daily cap ${formatUsdc(dailyCap)} (already spent ${formatUsdc(dailySpendUsd)} in 24h)`
+      );
+    }
+
     await db.insert(schema.approvals).values({
       id: approvalId,
       orgId: agent.orgId,
@@ -314,9 +361,9 @@ export async function runPurchaseFlow(params: PurchaseParams) {
       runId: params.runId,
       agentId: params.agentId,
       step: "payment_pending",
-      message: `Requires human approval — ${formatUsdc(finalPrice)} exceeds auto-approve limit ${formatUsdc(policy.autoApproveLimitUsd)}. Approve here or in Approvals.`,
+      message: `Requires human approval — ${formatUsdc(finalPrice)} ${reasonParts.join("; ")}. Approve here or in Approvals.`,
       actor: "AgntPymt",
-      payload: { approvalId },
+      payload: { approvalId, overAutoApprove, overDailyCap, dailySpendUsd, dailyCap },
       source: params.source,
     });
 

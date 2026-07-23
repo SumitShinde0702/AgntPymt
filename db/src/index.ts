@@ -30,4 +30,4 @@ export async function closeDb(): Promise<void> {
 
 export { schema };
 export type { Agent, Vendor, Run, Approval, Transaction, AuditLog } from "./schema.js";
-export { eq, desc, and, or, inArray } from "drizzle-orm";
+export { eq, desc, and, or, inArray, gte } from "drizzle-orm";

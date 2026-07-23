@@ -1,5 +1,5 @@
 import { Router } from "express";
-import { eq, desc, and, getDb, schema, inArray, type AuditLog } from "@agntpymt/db";
+import { eq, desc, and, getDb, schema, inArray, gte, type AuditLog } from "@agntpymt/db";
 import { z } from "zod";
 import { env } from "../config.js";
 import { checkHermesHealth } from "../services/hermes.js";
@@ -184,10 +184,65 @@ async function agentIdsForOrg(orgId: string): Promise<string[]> {
   return rows.map((r) => r.id);
 }
 
-apiRouter.get("/policies", async (_req, res) => {
+apiRouter.get("/policies", async (req, res) => {
+  const orgId = getOrgId(req);
   const db = getDb();
-  const rows = await db.select().from(schema.agentPolicies);
-  res.json(rows);
+  const agents = await db.select().from(schema.agents).where(eq(schema.agents.orgId, orgId));
+  if (agents.length === 0) {
+    return res.json([]);
+  }
+
+  const agentIds = agents.map((a) => a.id);
+  const policies = await db
+    .select()
+    .from(schema.agentPolicies)
+    .where(inArray(schema.agentPolicies.agentId, agentIds));
+  const policyByAgent = new Map(policies.map((p) => [p.agentId, p]));
+
+  const since = new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString();
+  const txs = await db
+    .select({
+      agentId: schema.transactions.agentId,
+      amountUsd: schema.transactions.amountUsd,
+    })
+    .from(schema.transactions)
+    .where(
+      and(
+        inArray(schema.transactions.agentId, agentIds),
+        gte(schema.transactions.createdAt, since),
+        inArray(schema.transactions.status, ["completed", "simulated"])
+      )
+    );
+
+  const spendByAgent = new Map<string, number>();
+  for (const tx of txs) {
+    spendByAgent.set(tx.agentId, (spendByAgent.get(tx.agentId) ?? 0) + tx.amountUsd);
+  }
+
+  const orgSettings = await getOrgSettings(orgId);
+
+  res.json(
+    agents.map((agent) => {
+      const policy = policyByAgent.get(agent.id) ?? {
+        agentId: agent.id,
+        autoApproveLimitUsd: 0.05,
+        requireWalletConfirmation: false,
+        autoSettlementEnabled: true,
+        negotiationRules: null,
+        dailyAggregateCapUsd: null,
+      };
+      return {
+        agentId: agent.id,
+        agentName: agent.name,
+        category: agent.category,
+        status: agent.status,
+        iconColor: agent.iconColor,
+        policy,
+        dailySpendUsd: spendByAgent.get(agent.id) ?? 0,
+        orgCeilingUsd: orgSettings.maxExposureLimitUsd,
+      };
+    })
+  );
 });
 
 apiRouter.get("/org/settings", async (req, res) => {
@@ -208,8 +263,9 @@ apiRouter.patch("/org/settings", async (req, res) => {
 });
 
 const patchPolicySchema = z.object({
-  autoApproveLimitUsd: z.number().positive().optional(),
+  autoApproveLimitUsd: z.number().min(0).optional(),
   negotiationRules: z.string().nullable().optional(),
+  dailyAggregateCapUsd: z.number().positive().nullable().optional(),
 });
 
 apiRouter.patch("/agents/:id/policy", async (req, res) => {
@@ -231,6 +287,9 @@ apiRouter.patch("/agents/:id/policy", async (req, res) => {
   }
   if (parsed.data.negotiationRules !== undefined) {
     updates.negotiationRules = parsed.data.negotiationRules;
+  }
+  if (parsed.data.dailyAggregateCapUsd !== undefined) {
+    updates.dailyAggregateCapUsd = parsed.data.dailyAggregateCapUsd;
   }
 
   await db

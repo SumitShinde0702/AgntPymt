@@ -137,6 +137,18 @@ export type AgentPolicy = {
   requireWalletConfirmation: boolean;
   autoSettlementEnabled: boolean;
   negotiationRules: string | null;
+  dailyAggregateCapUsd: number | null;
+};
+
+export type PolicyRow = {
+  agentId: string;
+  agentName: string;
+  category: string;
+  status: string;
+  iconColor: string;
+  policy: AgentPolicy;
+  dailySpendUsd: number;
+  orgCeilingUsd: number | null;
 };
 
 export type OrgSettings = {
