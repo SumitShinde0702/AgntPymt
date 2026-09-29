@@ -1,0 +1,66 @@
+---
+description: AgntPymt security checklist — apply on every auth, API, payment, AI, and infra change
+alwaysApply: true
+---
+
+# Security checklist
+
+When changing auth, APIs, payments, AI tools, DB, or deploy config, verify the relevant items below. Prefer fixing in the same PR over deferring.
+
+## Secrets & config
+1. No DB credentials, API keys, or tokens in source, commits, or client bundles
+2. Never commit `.env`; only placeholders in `.env.example`
+3. No hardcoded secrets; fail closed in production if required keys are missing (`AGNTPYMT_MCP_KEY`, Clerk, etc.)
+4. No secrets in frontend (`VITE_*` is public) or production source maps
+5. No secrets in build logs, health endpoints, or error responses
+
+## Auth & sessions
+6. Authentication required on all non-public routes; no silent “auth off → org_demo” in production
+7. Strong session/JWT handling; no tokens in query strings (`__clerk_token`)
+8. Cookies: HttpOnly, Secure, SameSite when cookies are used
+9. No default/dev credentials in production (`dev-mcp-key`, `agntpymt/agntpymt`)
+10. Password reset / Clerk flows must not leak account existence or tokens
+
+## Authorization & tenancy
+11. Every data access scoped by `orgId` (and agent ownership where applicable)
+12. No IDOR: never trust client-supplied IDs/roles without ownership checks
+13. Admin / seller / MCP routes enforced server-side — never `VITE_*` alone
+14. MCP and AI tools must not read/write other orgs’ data or dump unscoped tables
+15. Payment/spend authorization only on the server (policy, caps, kill switch)
+
+## Injection & request safety
+16. Validate/sanitize all inputs (Zod); parameterized queries only (Drizzle/`eq`)
+17. No XSS (`dangerouslySetInnerHTML` without sanitization); escape AI/chat output
+18. CSRF: prefer Bearer auth; if cookies, use SameSite + CSRF tokens
+19. No path traversal on skill/profile/file paths (`..`, unsanitized IDs)
+20. No SSRF / arbitrary `command`/`url` from users into Hermes/MCP without allowlists
+21. No insecure file uploads; webhook endpoints need signature verification
+
+## Network & abuse
+22. CORS allowlist — never `origin: true` in production
+23. Rate-limit login, signup, AI, purchase, and MCP endpoints
+24. Security headers (Helmet/CSP/HSTS) on the API and static UI
+25. Do not expose debug pages, internal dashboards, or verbose stack traces in production
+
+## Payments & wallets
+26. Never return or log wallet private keys; encrypt/KMS at rest — plaintext DB keys are forbidden for production
+27. Live payment mode requires auth + verified payee config; simulation must be explicit
+28. Frontend payment UI is display-only; settlement and policy checks are backend
+
+## AI-specific
+29. Treat user/agent text as untrusted (prompt injection); keep pricing/policy in code
+30. AI tools/actions require the same org/agent permission checks as human APIs
+
+## Ops & supply chain
+31. Least-privilege DB user; do not publish Postgres to the public internet
+32. Audit logs for approvals, spends, policy changes; monitoring/alerting for auth and payment failures
+33. Keep dependencies updated; review generated code before shipping
+34. Backups/restore plan for Postgres and profile storage
+
+## AgntPymt known hotspots (check these first)
+- Public path bypass: `server/src/middleware/auth.ts` (`/agent/execute`)
+- MCP key default: `server/src/config.ts` (`dev-mcp-key`)
+- Run history/SSE org checks: `server/src/routes/api.ts`
+- CORS: `server/src/index.ts`
+- Wallet key storage: `server/src/services/agent-wallet.ts`
+- Hermes MCP `command`/`url` upserts and skill path IDs: `hermes-profile.ts`
