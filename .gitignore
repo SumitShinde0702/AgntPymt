@@ -11,6 +11,10 @@ build/
 mcp-stdout.txt
 mcp-stderr.txt
 
+# promo video projects (local only)
+video/
+video-walkthrough/
+
 # local deploy keys
 gha_vm_deploy
 gha_vm_deploy.pub
