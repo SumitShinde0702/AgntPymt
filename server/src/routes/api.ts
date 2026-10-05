@@ -342,8 +342,18 @@ apiRouter.post("/agents/suggest", async (req, res) => {
   }
 });
 
+async function agentNameTaken(orgId: string, name: string, excludeAgentId?: string) {
+  const db = getDb();
+  const wanted = name.trim().toLowerCase();
+  const rows = await db
+    .select({ id: schema.agents.id, name: schema.agents.name })
+    .from(schema.agents)
+    .where(eq(schema.agents.orgId, orgId));
+  return rows.some((a) => a.id !== excludeAgentId && a.name.trim().toLowerCase() === wanted);
+}
+
 const createAgentSchema = z.object({
-  name: z.string().min(1),
+  name: z.string().trim().min(1),
   category: z.string().min(1),
   description: z.string().optional(),
   iconColor: iconColorSchema.optional(),
@@ -357,6 +367,9 @@ apiRouter.post("/agents", async (req, res) => {
 
   const db = getDb();
   const orgId = getOrgId(req);
+  if (await agentNameTaken(orgId, parsed.data.name)) {
+    return res.status(409).json({ error: `An agent named "${parsed.data.name}" already exists` });
+  }
   const id = `agent_${Date.now()}`;
   const row = {
     id,
@@ -395,7 +408,7 @@ apiRouter.post("/agents", async (req, res) => {
 });
 
 const patchAgentSchema = z.object({
-  name: z.string().min(1).optional(),
+  name: z.string().trim().min(1).optional(),
   description: z.string().optional(),
 });
 
@@ -407,6 +420,9 @@ apiRouter.patch("/agents/:id", async (req, res) => {
   const orgId = getOrgId(req);
   const [agent] = await db.select().from(schema.agents).where(eq(schema.agents.id, req.params.id));
   if (!agent || agent.orgId !== orgId) return res.status(404).json({ error: "Not found" });
+  if (parsed.data.name && (await agentNameTaken(orgId, parsed.data.name, agent.id))) {
+    return res.status(409).json({ error: `An agent named "${parsed.data.name}" already exists` });
+  }
 
   const updates: Record<string, string | null> = {};
   if (parsed.data.name) updates.name = parsed.data.name;
