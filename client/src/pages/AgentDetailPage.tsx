@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
-import { Link, useParams } from "react-router-dom";
-import { ArrowLeft, Bot, CheckCircle, Clock, Copy, ExternalLink } from "lucide-react";
+import { Link, useNavigate, useParams } from "react-router-dom";
+import { ArrowLeft, Bot, CheckCircle, Clock, Copy, ExternalLink, Loader2, Trash2 } from "lucide-react";
 import { CapabilitiesPanel } from "../components/agents/CapabilitiesPanel";
 import { Erc8004Panel } from "../components/agents/Erc8004Panel";
 import { NegotiationRulesEditor } from "../components/agents/NegotiationRulesEditor";
@@ -96,6 +96,30 @@ export function AgentDetailPage() {
   const [hermesLoading, setHermesLoading] = useState(false);
   const [loading, setLoading] = useState(true);
   const [loadError, setLoadError] = useState<string | null>(null);
+  const [deleting, setDeleting] = useState(false);
+  const [deleteError, setDeleteError] = useState<string | null>(null);
+  const navigate = useNavigate();
+
+  async function deleteAgent() {
+    if (!agent || !agentId) return;
+    const usdc = agent.onChain.usdc;
+    const warning =
+      usdc > 0
+        ? `\n\nThis agent's wallet still holds ${usdc.toFixed(2)} USDC. Move it out first if you need it — the wallet will no longer be shown.`
+        : "";
+    if (!window.confirm(`Delete "${agent.name}"? Pending approvals will be denied and it can no longer run.${warning}`)) {
+      return;
+    }
+    setDeleting(true);
+    setDeleteError(null);
+    try {
+      await api<{ ok: boolean }>(`/api/agents/${agentId}`, { method: "DELETE" });
+      navigate("/agents");
+    } catch (err) {
+      setDeleteError(err instanceof Error ? err.message : "Failed to delete agent");
+      setDeleting(false);
+    }
+  }
 
   const load = useCallback(() => {
     if (!agentId) return;
@@ -218,8 +242,18 @@ export function AgentDetailPage() {
               <div className="text-xs text-slate-500">ETH</div>
               <div className="text-xl font-bold">{agent.onChain.eth.toFixed(4)}</div>
             </div>
+            <button
+              type="button"
+              onClick={() => void deleteAgent()}
+              disabled={deleting}
+              className="inline-flex items-center gap-2 self-center rounded-xl border border-red-200 px-3 py-2 text-sm font-medium text-red-600 transition hover:bg-red-50 disabled:opacity-50"
+            >
+              {deleting ? <Loader2 className="h-4 w-4 animate-spin" /> : <Trash2 className="h-4 w-4" />}
+              Delete
+            </button>
           </div>
         </div>
+        {deleteError && <p className="mt-3 text-sm text-red-600">{deleteError}</p>}
       </div>
 
       <div className="flex flex-col gap-2 sm:flex-row sm:gap-1">

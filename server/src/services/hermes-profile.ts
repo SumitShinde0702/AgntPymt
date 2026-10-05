@@ -1,7 +1,7 @@
 import fs from "node:fs/promises";
 import path from "node:path";
-import { eq } from "@agntpymt/db";
-import { getDb, schema, type Agent } from "@agntpymt/db";
+import { and, eq } from "@agntpymt/db";
+import { AgentStatus, getDb, schema, type Agent } from "@agntpymt/db";
 import { parse as parseYaml, stringify as stringifyYaml } from "yaml";
 import { env } from "../config.js";
 import {
@@ -97,7 +97,7 @@ async function defaultGatewayAgentId(): Promise<string> {
   const [agent] = await db
     .select({ id: schema.agents.id })
     .from(schema.agents)
-    .where(eq(schema.agents.orgId, env.orgId))
+    .where(and(eq(schema.agents.orgId, env.orgId), eq(schema.agents.status, AgentStatus.Active)))
     .limit(1);
   return agent?.id ?? "";
 }
@@ -427,6 +427,7 @@ export async function ensureAllHermesProfiles(orgId: string): Promise<number> {
   const agents = await db.select().from(schema.agents).where(eq(schema.agents.orgId, orgId));
   let count = 0;
   for (const agent of agents) {
+    if (agent.status === AgentStatus.Deleted) continue;
     if (!agent.hermesProvisioned) {
       await ensureHermesProfile(agent.id);
     }

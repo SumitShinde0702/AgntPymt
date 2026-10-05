@@ -7,7 +7,7 @@ import { env, rootDir } from "./config.js";
 import { apiRouter } from "./routes/api.js";
 import { mcpRouter } from "./routes/mcp.js";
 import { apiAuthMiddleware, installClerkMiddleware } from "./middleware/auth.js";
-import { eq, getDb, schema } from "@agntpymt/db";
+import { AgentStatus, and, eq, getDb, schema } from "@agntpymt/db";
 import { syncAllProvisionedProfileMcp, syncHermesGatewayMcpConfig, getHermesHomeDir, migrateLegacyHermesProfiles, ensureAllHermesProfiles } from "./services/hermes-profile.js";
 import { mcpHttpRouter } from "./mcp/http-router.js";
 
@@ -22,7 +22,9 @@ async function main() {
     const provisioned = await db
       .select({ id: schema.agents.id })
       .from(schema.agents)
-      .where(eq(schema.agents.hermesProvisioned, true))
+      .where(
+        and(eq(schema.agents.hermesProvisioned, true), eq(schema.agents.status, AgentStatus.Active))
+      )
       .limit(1);
     const gatewayAgentId = provisioned[0]?.id ?? "";
     await syncHermesGatewayMcpConfig(gatewayAgentId);

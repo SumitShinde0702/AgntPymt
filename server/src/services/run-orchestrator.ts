@@ -1,6 +1,6 @@
 import { nanoid } from "nanoid";
 import { eq } from "@agntpymt/db";
-import { getDb, schema } from "@agntpymt/db";
+import { agentCanOperate, getDb, schema } from "@agntpymt/db";
 import { logAudit } from "./audit.js";
 import { runEventBus } from "./event-bus.js";
 import { checkHermesHealth, startHermesRun, streamHermesRunEvents, type HermesRunEvent } from "./hermes.js";
@@ -257,6 +257,7 @@ export async function executeRun(runId: string, agentId: string, prompt: string)
   const db = getDb();
   const [agent] = await db.select().from(schema.agents).where(eq(schema.agents.id, agentId));
   if (!agent) throw new Error("Agent not found");
+  if (!agentCanOperate(agent.status)) throw new Error(`Agent is ${agent.status}`);
 
   await logAudit({
     runId,

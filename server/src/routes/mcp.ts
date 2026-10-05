@@ -1,6 +1,6 @@
 import { Router } from "express";
 import { eq, desc } from "@agntpymt/db";
-import { getDb, schema } from "@agntpymt/db";
+import { agentCanOperate, getDb, schema } from "@agntpymt/db";
 import { env } from "../config.js";
 
 export const mcpRouter = Router();
@@ -21,7 +21,7 @@ mcpRouter.use((req, res, next) => {
 async function loadAgent(agentId: string) {
   const db = getDb();
   const [agent] = await db.select().from(schema.agents).where(eq(schema.agents.id, agentId));
-  if (!agent) return null;
+  if (!agent || !agentCanOperate(agent.status)) return null;
   const [policy] = await db
     .select()
     .from(schema.agentPolicies)

@@ -1,6 +1,6 @@
 import { nanoid } from "nanoid";
 import { eq, and, gte, inArray } from "@agntpymt/db";
-import { getDb, schema, type Vendor } from "@agntpymt/db";
+import { agentCanOperate, getDb, schema, type Vendor } from "@agntpymt/db";
 import { env } from "../config.js";
 import { logAudit } from "../services/audit.js";
 import { matchVendor, buildFulfillment } from "./vendor-matcher.js";
@@ -63,7 +63,7 @@ async function sumAgentSpendLast24h(agentId: string): Promise<number> {
 async function getAgent(agentId: string) {
   const db = getDb();
   const [agent] = await db.select().from(schema.agents).where(eq(schema.agents.id, agentId));
-  return agent;
+  return agent && agentCanOperate(agent.status) ? agent : undefined;
 }
 
 export type PurchaseParams = {

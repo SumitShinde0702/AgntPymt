@@ -1,5 +1,17 @@
 import { Router } from "express";
-import { eq, desc, and, getDb, schema, inArray, gte, type AuditLog } from "@agntpymt/db";
+import {
+  AgentStatus,
+  agentCanOperate,
+  eq,
+  ne,
+  desc,
+  and,
+  getDb,
+  schema,
+  inArray,
+  gte,
+  type AuditLog,
+} from "@agntpymt/db";
 import { z } from "zod";
 import { env } from "../config.js";
 import { checkHermesHealth } from "../services/hermes.js";
@@ -37,6 +49,9 @@ import { getOrgSettings, updateOrgSettings } from "../services/org-settings.js";
 
 export const apiRouter = Router();
 
+const liveOrgAgents = (orgId: string) =>
+  and(eq(schema.agents.orgId, orgId), ne(schema.agents.status, AgentStatus.Deleted));
+
 apiRouter.get("/me", async (req, res) => {
   const orgId = getOrgId(req);
   if (!authEnabled) {
@@ -62,7 +77,7 @@ apiRouter.get("/health", async (req, res) => {
   const hermes = await checkHermesHealth();
   const orgId = getOrgId(req);
   const db = getDb();
-  const agents = await db.select().from(schema.agents).where(eq(schema.agents.orgId, orgId));
+  const agents = await db.select().from(schema.agents).where(liveOrgAgents(orgId));
   const hermesProfilesProvisioned = agents.filter((a) => a.hermesProvisioned).length;
   res.json({
     status: "ok",
@@ -117,7 +132,8 @@ apiRouter.get("/dashboard", async (req, res) => {
   await ensureAllAgentWallets(orgId);
   await ensureAllHermesProfiles(orgId);
   const db = getDb();
-  const agents = await db.select().from(schema.agents).where(eq(schema.agents.orgId, orgId));
+  const allAgents = await db.select().from(schema.agents).where(eq(schema.agents.orgId, orgId));
+  const agents = allAgents.filter((a) => a.status !== AgentStatus.Deleted);
   const approvals = await db
     .select()
     .from(schema.approvals)
@@ -128,10 +144,10 @@ apiRouter.get("/dashboard", async (req, res) => {
     .where(eq(schema.transactions.orgId, orgId))
     .orderBy(desc(schema.transactions.createdAt))
     .limit(5);
-  const agentNames = new Map(agents.map((a) => [a.id, a.name]));
+  const agentNames = new Map(allAgents.map((a) => [a.id, a.name]));
 
   const totalBalance = agents.reduce((sum, a) => sum + a.balanceUsd, 0);
-  const activeAgents = agents.filter((a) => a.status === "active").length;
+  const activeAgents = agents.filter((a) => a.status === AgentStatus.Active).length;
   const spend30Days = transactions.reduce((sum, t) => sum + t.amountUsd, 0);
   const hermesProfilesProvisioned = agents.filter((a) => a.hermesProvisioned).length;
 
@@ -187,7 +203,7 @@ async function agentIdsForOrg(orgId: string): Promise<string[]> {
 apiRouter.get("/policies", async (req, res) => {
   const orgId = getOrgId(req);
   const db = getDb();
-  const agents = await db.select().from(schema.agents).where(eq(schema.agents.orgId, orgId));
+  const agents = await db.select().from(schema.agents).where(liveOrgAgents(orgId));
   if (agents.length === 0) {
     return res.json([]);
   }
@@ -308,15 +324,15 @@ apiRouter.get("/agents", async (req, res) => {
   const orgId = getOrgId(req);
   await ensureAllAgentWallets(orgId);
   const db = getDb();
-  const agents = await db.select().from(schema.agents).where(eq(schema.agents.orgId, orgId));
+  const agents = await db.select().from(schema.agents).where(liveOrgAgents(orgId));
   res.json(agents.map(stripAgentSecrets));
 });
 
 apiRouter.get("/agents/:id", async (req, res) => {
   const db = getDb();
   const orgId = getOrgId(req);
-  const [agent] = await db.select().from(schema.agents).where(eq(schema.agents.id, req.params.id));
-  if (!agent || agent.orgId !== orgId) return res.status(404).json({ error: "Not found" });
+  const agent = await loadOrgAgent(req.params.id, orgId);
+  if (!agent) return res.status(404).json({ error: "Not found" });
   const [policy] = await db
     .select()
     .from(schema.agentPolicies)
@@ -348,7 +364,7 @@ async function agentNameTaken(orgId: string, name: string, excludeAgentId?: stri
   const rows = await db
     .select({ id: schema.agents.id, name: schema.agents.name })
     .from(schema.agents)
-    .where(eq(schema.agents.orgId, orgId));
+    .where(liveOrgAgents(orgId));
   return rows.some((a) => a.id !== excludeAgentId && a.name.trim().toLowerCase() === wanted);
 }
 
@@ -377,7 +393,7 @@ apiRouter.post("/agents", async (req, res) => {
     name: parsed.data.name,
     category: parsed.data.category,
     description: parsed.data.description ?? null,
-    status: "active",
+    status: AgentStatus.Active,
     iconColor: parsed.data.iconColor ?? "violet",
     walletAddress: null,
     balanceUsd: 0,
@@ -418,8 +434,8 @@ apiRouter.patch("/agents/:id", async (req, res) => {
 
   const db = getDb();
   const orgId = getOrgId(req);
-  const [agent] = await db.select().from(schema.agents).where(eq(schema.agents.id, req.params.id));
-  if (!agent || agent.orgId !== orgId) return res.status(404).json({ error: "Not found" });
+  const agent = await loadOrgAgent(req.params.id, orgId);
+  if (!agent) return res.status(404).json({ error: "Not found" });
   if (parsed.data.name && (await agentNameTaken(orgId, parsed.data.name, agent.id))) {
     return res.status(409).json({ error: `An agent named "${parsed.data.name}" already exists` });
   }
@@ -436,9 +452,29 @@ apiRouter.patch("/agents/:id", async (req, res) => {
 async function loadOrgAgent(agentId: string, orgId: string) {
   const db = getDb();
   const [agent] = await db.select().from(schema.agents).where(eq(schema.agents.id, agentId));
-  if (!agent || agent.orgId !== orgId) return null;
+  if (!agent || agent.orgId !== orgId || agent.status === AgentStatus.Deleted) return null;
   return agent;
 }
+
+apiRouter.delete("/agents/:id", async (req, res) => {
+  const db = getDb();
+  const orgId = getOrgId(req);
+  const agent = await loadOrgAgent(req.params.id, orgId);
+  if (!agent) return res.status(404).json({ error: "Not found" });
+
+  const now = new Date().toISOString();
+  await db
+    .update(schema.agents)
+    .set({ status: AgentStatus.Deleted })
+    .where(eq(schema.agents.id, agent.id));
+  await db
+    .update(schema.approvals)
+    .set({ status: "denied", resolvedAt: now })
+    .where(
+      and(eq(schema.approvals.agentId, agent.id), eq(schema.approvals.status, "pending_approval"))
+    );
+  res.json({ ok: true });
+});
 
 apiRouter.get("/agents/:id/hermes", async (req, res) => {
   const orgId = getOrgId(req);
@@ -739,12 +775,12 @@ apiRouter.post("/agent/run", async (req, res) => {
 
   const db = getDb();
   const orgId = getOrgId(req);
-  const [agent] = await db
-    .select()
-    .from(schema.agents)
-    .where(eq(schema.agents.id, parsed.data.agentId));
-  if (!agent || agent.orgId !== orgId) {
+  const agent = await loadOrgAgent(parsed.data.agentId, orgId);
+  if (!agent) {
     return res.status(404).json({ error: "Agent not found" });
+  }
+  if (!agentCanOperate(agent.status)) {
+    return res.status(409).json({ error: `Agent is ${agent.status}` });
   }
 
   const runId = await createRun(parsed.data.agentId, parsed.data.prompt, orgId);

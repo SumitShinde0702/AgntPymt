@@ -1,4 +1,4 @@
-import { and, desc, eq, getDb, schema } from "@agntpymt/db";
+import { agentCanOperate, and, desc, eq, getDb, schema } from "@agntpymt/db";
 import { getActiveRunId } from "../services/run-context.js";
 
 const DEFAULT_AGENT_ID = process.env.AGENT_ID ?? "";
@@ -6,7 +6,7 @@ const DEFAULT_AGENT_ID = process.env.AGENT_ID ?? "";
 async function loadAgent(agentId: string) {
   const db = getDb();
   const [agent] = await db.select().from(schema.agents).where(eq(schema.agents.id, agentId));
-  if (!agent) return null;
+  if (!agent || !agentCanOperate(agent.status)) return null;
   const [policy] = await db
     .select()
     .from(schema.agentPolicies)

@@ -1,5 +1,5 @@
 import { eq } from "drizzle-orm";
-import { getDb, schema, closeDb } from "./index.js";
+import { AgentStatus, getDb, schema, closeDb } from "./index.js";
 
 const ORG_ID = "org_demo";
 const now = () => new Date().toISOString();
@@ -108,7 +108,7 @@ async function seed() {
       name: "Research Agent",
       category: "research",
       description: "Sector research and market intelligence",
-      status: "active",
+      status: AgentStatus.Active,
       iconColor: "violet",
       walletAddress: null,
       walletProvisioned: false,
@@ -121,7 +121,7 @@ async function seed() {
       name: "Procurement Agent",
       category: "procurement",
       description: "Office supplies and vendor orders",
-      status: "active",
+      status: AgentStatus.Active,
       iconColor: "blue",
       walletAddress: null,
       walletProvisioned: false,
@@ -134,7 +134,7 @@ async function seed() {
       name: "Travel Agent",
       category: "travel",
       description: "Flights, hotels, and travel bookings",
-      status: "active",
+      status: AgentStatus.Active,
       iconColor: "green",
       walletAddress: null,
       walletProvisioned: false,
@@ -147,7 +147,7 @@ async function seed() {
       name: "Cloud Ops Agent",
       category: "cloud",
       description: "Cloud infrastructure and vendor bills",
-      status: "active",
+      status: AgentStatus.Active,
       iconColor: "orange",
       walletAddress: null,
       walletProvisioned: false,

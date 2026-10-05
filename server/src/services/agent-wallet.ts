@@ -1,5 +1,8 @@
-import { eq } from "@agntpymt/db";
+import { AgentStatus, and, eq, ne } from "@agntpymt/db";
 import { getDb, schema } from "@agntpymt/db";
+
+const liveOrgAgents = (orgId: string) =>
+  and(eq(schema.agents.orgId, orgId), ne(schema.agents.status, AgentStatus.Deleted));
 import { createAgentWallet, fetchWalletBalances } from "../chain/wallet.js";
 import { env } from "../config.js";
 
@@ -26,7 +29,7 @@ export async function provisionAgentWallet(agentId: string) {
 
 export async function ensureAllAgentWallets(orgId: string = env.orgId) {
   const db = getDb();
-  const agents = await db.select().from(schema.agents).where(eq(schema.agents.orgId, orgId));
+  const agents = await db.select().from(schema.agents).where(liveOrgAgents(orgId));
   for (const agent of agents) {
     if (!agent.walletProvisioned || !agent.walletAddress || !agent.walletPrivateKey) {
       await provisionAgentWallet(agent.id);
@@ -39,7 +42,7 @@ export async function getWalletsOverview(orgId: string = env.orgId) {
   const db = getDb();
 
   const [org] = await db.select().from(schema.organizations).where(eq(schema.organizations.id, orgId));
-  const agents = await db.select().from(schema.agents).where(eq(schema.agents.orgId, orgId));
+  const agents = await db.select().from(schema.agents).where(liveOrgAgents(orgId));
 
   const treasuryAddress = org?.treasuryWalletAddress ?? null;
   const treasuryBalances = treasuryAddress ? await fetchWalletBalances(treasuryAddress) : null;

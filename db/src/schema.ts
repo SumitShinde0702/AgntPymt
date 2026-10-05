@@ -23,13 +23,25 @@ export const users = pgTable("users", {
   createdAt: text("created_at").notNull(),
 });
 
+export const AgentStatus = {
+  Active: "active",
+  /** Soft-deleted: row kept (wallet key, payment/audit history) but hidden everywhere. */
+  Deleted: "deleted",
+} as const;
+export type AgentStatus = (typeof AgentStatus)[keyof typeof AgentStatus];
+
+/** Only active agents may run, call MCP tools, or spend. */
+export function agentCanOperate(status: AgentStatus): boolean {
+  return status === AgentStatus.Active;
+}
+
 export const agents = pgTable("agents", {
   id: text("id").primaryKey(),
   orgId: text("org_id").notNull(),
   name: text("name").notNull(),
   category: text("category").notNull(),
   description: text("description"),
-  status: text("status").notNull().default("active"),
+  status: text("status").$type<AgentStatus>().notNull().default(AgentStatus.Active),
   iconColor: text("icon_color").notNull().default("violet"),
   walletAddress: text("wallet_address"),
   walletPrivateKey: text("wallet_private_key"),
